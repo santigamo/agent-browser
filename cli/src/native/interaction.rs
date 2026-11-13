@@ -152,6 +152,72 @@ pub async fn hover(
     Ok((x + offset.0, y + offset.1))
 }
 
+/// Input types `fill` sets by value instead of typing: (type, format, example, is_date_time).
+/// One table serves the fill error messages, the snapshot's collapsed date/time controls and the
+/// script injected into the page, so they cannot drift apart.
+pub(super) const STRUCTURED_INPUTS: &[(&str, &str, &str, bool)] = &[
+    ("time", "HH:MM", "19:30", true),
+    ("date", "YYYY-MM-DD", "2026-03-14", true),
+    (
+        "datetime-local",
+        "YYYY-MM-DDTHH:MM",
+        "2026-03-14T19:30",
+        true,
+    ),
+    ("month", "YYYY-MM", "2026-03", true),
+    ("week", "YYYY-Www", "2026-W11", true),
+    ("color", "#rrggbb", "#ff8800", false),
+    (
+        "range",
+        "a number within the min/max of the slider",
+        "50",
+        false,
+    ),
+];
+
+/// The value format of a date/time input type (`HH:MM`, `YYYY-MM-DD`, ...), for the snapshot.
+pub(super) fn date_time_format(input_type: &str) -> Option<&'static str> {
+    STRUCTURED_INPUTS
+        .iter()
+        .find(|(t, _, _, dt)| *dt && *t == input_type)
+        .map(|(_, f, _, _)| *f)
+}
+
+/// Runs on an `<input>` with the format table as the second argument; returns
+/// `{status: "filled"}` when it set a structured control's value, `{status: "rejected", ...}` when
+/// the control cannot take it (disabled, read-only, or the browser sanitized the value away), or
+/// `{status: "text"}` for ordinary text inputs, which keep the keyboard-insertion path.
+const FILL_STRUCTURED_INPUT_JS: &str = r#"function(value, table) {
+  // A time/date input shows up in the accessibility tree as separate spinbuttons that live in
+  // the input's shadow root; filling any of them fills the whole input.
+  let el = this;
+  const root = el.getRootNode && el.getRootNode();
+  if (root && root.host && root.host.tagName === 'INPUT') el = root.host;
+  if (el.tagName !== 'INPUT') return { status: 'text' };
+  const type = el.type;
+  const row = table.find((r) => r[0] === type);
+  if (!row) return { status: 'text' };
+  const fmt = row[1] + ', e.g. ' + row[2];
+  if (el.disabled || el.readOnly) return { status: 'rejected', type, reason: el.disabled ? 'is disabled' : 'is read-only' };
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  el.focus();
+  const prev = el.value;
+  setter.call(el, value);
+  // Chrome sanitizes silently: an invalid date or time becomes '', an invalid color '#000000',
+  // and a slider value is clamped to min/max and rounded to step. Compare what is there now.
+  let ok = value === '' || el.value !== '';
+  if (ok && type === 'color') ok = el.value === value.toLowerCase();
+  if (ok && type === 'range') ok = Number(el.value) === Number(value);
+  if (!ok) {
+    const now = type === 'range' ? 'it became ' + el.value + '; min ' + (el.min || 0) + ', max ' + (el.max || 100) + ', step ' + (el.step || 1) : '';
+    setter.call(el, prev);
+    return { status: 'rejected', type, format: fmt, now };
+  }
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  return { status: 'filled', type };
+}"#;
+
 pub async fn fill(
     client: &CdpClient,
     session_id: &str,
@@ -168,6 +234,63 @@ pub async fn fill(
         iframe_sessions,
     )
     .await?;
+
+    // Structured controls (time, date, color, range, ...) have no text to type into: keyboard
+    // insertion goes nowhere. Set the value directly and fire the events a person's input would.
+    let table: Vec<Value> = STRUCTURED_INPUTS
+        .iter()
+        .map(|(t, f, e, _)| serde_json::json!([t, f, e]))
+        .collect();
+    let structured: Value = client
+        .send_command_typed::<_, Value>(
+            "Runtime.callFunctionOn",
+            &CallFunctionOnParams {
+                function_declaration: FILL_STRUCTURED_INPUT_JS.to_string(),
+                object_id: Some(object_id.clone()),
+                arguments: Some(vec![
+                    CallArgument {
+                        value: Some(Value::String(value.to_string())),
+                        object_id: None,
+                    },
+                    CallArgument {
+                        value: Some(Value::Array(table)),
+                        object_id: None,
+                    },
+                ]),
+                return_by_value: Some(true),
+                await_promise: Some(false),
+            },
+            Some(&effective_session_id),
+        )
+        .await?;
+    if let Some(outcome) = structured.pointer("/result/value") {
+        let kind = outcome
+            .get("type")
+            .and_then(Value::as_str)
+            .unwrap_or("structured");
+        match outcome.get("status").and_then(Value::as_str) {
+            Some("filled") => return Ok(()),
+            Some("rejected") => {
+                if let Some(reason) = outcome.get("reason").and_then(Value::as_str) {
+                    return Err(format!("This {kind} input {reason}"));
+                }
+                let now = outcome.get("now").and_then(Value::as_str).unwrap_or("");
+                return Err(format!(
+                    "This {kind} input did not accept {value:?}{}; it expects {}",
+                    if now.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" ({now})")
+                    },
+                    outcome
+                        .get("format")
+                        .and_then(Value::as_str)
+                        .unwrap_or("a valid value")
+                ));
+            }
+            _ => {}
+        }
+    }
 
     // Focus the element
     client
@@ -1411,5 +1534,20 @@ mod tests {
         assert_eq!(key_text("ArrowUp"), None);
         assert_eq!(key_text("Backspace"), None);
         assert_eq!(key_text("Delete"), None);
+    }
+}
+
+#[cfg(test)]
+mod structured_input_tests {
+    use super::*;
+
+    #[test]
+    fn date_time_formats_come_from_the_one_table() {
+        assert_eq!(date_time_format("time"), Some("HH:MM"));
+        assert_eq!(date_time_format("datetime-local"), Some("YYYY-MM-DDTHH:MM"));
+        assert_eq!(date_time_format("week"), Some("YYYY-Www"));
+        // color and range are filled by value but are not collapsed date/time controls
+        assert_eq!(date_time_format("color"), None);
+        assert_eq!(date_time_format("text"), None);
     }
 }

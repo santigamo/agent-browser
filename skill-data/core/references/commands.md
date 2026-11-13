@@ -78,7 +78,7 @@ agent-browser click @e1           # Click
 agent-browser click @e1 --new-tab # Click and open in new tab
 agent-browser dblclick @e1        # Double-click
 agent-browser focus @e1           # Focus element
-agent-browser fill @e2 "text"     # Clear and fill
+agent-browser fill @e2 "text"     # Clear and fill (date/time/color/range inputs: set by value, see below)
 agent-browser type @e2 "text"     # Type without clearing
 agent-browser press Enter         # Press key (alias: key)
 agent-browser press Control+a     # Key combination
@@ -94,6 +94,8 @@ agent-browser scrollintoview @e1  # Scroll element into view (alias: scrollinto)
 agent-browser drag @e1 @e2        # Drag and drop
 agent-browser upload @e1 file.pdf # Upload files
 ```
+
+`fill` on a date, time, datetime-local, month, week, color or range input sets the value directly and fires `input` and `change`; give it the control's format (`YYYY-MM-DD`, `HH:MM`, `YYYY-MM-DDTHH:MM`, `YYYY-MM`, `YYYY-Www`, `#rrggbb`, a number within min and max). A value the browser would silently drop, a disabled input and a read-only input fail with an error that says why. In a snapshot, a date or time input is one `textbox` line with its type, value and fill format instead of its internal spinbuttons.
 
 For `fill` and `type`, put options before the optional `--` marker. Text after the marker is literal, including values that look like flags. For example, `agent-browser fill @e2 -- --json` fills with `--json`, and `agent-browser type @e2 --clear --delay 10 -- --clear` clears the field, then types `--clear`. MCP `agent_browser_fill` and `agent_browser_type` pass typed `text` values literally, so they do not need the marker.
 

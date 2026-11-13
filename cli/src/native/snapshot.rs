@@ -7,6 +7,7 @@ use super::cdp::types::{
     AXNode, AXProperty, AXValue, EvaluateParams, EvaluateResult, GetFullAXTreeResult,
 };
 use super::element::{normalize_ax_role, resolve_ax_session, RefMap};
+use super::interaction::date_time_format;
 
 #[cfg(test)]
 mod document_identity_regressions {
@@ -125,6 +126,17 @@ const INTERACTIVE_ROLES: &[&str] = &[
     "Iframe",
 ];
 
+/// Chrome's accessibility roles for date and time inputs. Their children are internal spinbuttons
+/// (day, month, hour...) that the snapshot collapses into the one control they belong to.
+const DATE_TIME_ROLES: &[&str] = &[
+    "InputTime",
+    "Time",
+    "Date",
+    "InputDate",
+    "DateTime",
+    "InputDateTime",
+];
+
 const TABLE_CELL_ROLES: &[&str] = &["cell", "gridcell", "columnheader", "rowheader"];
 
 const CONTENT_ROLES: &[&str] = &[
@@ -205,6 +217,8 @@ struct TreeNode {
     cursor_info: Option<CursorElementInfo>,
     url: Option<String>,
     hint: Option<String>,
+    /// Set for a date/time input rendered as one textbox: (input type, current value).
+    collapsed_input: Option<(String, String)>,
 }
 
 impl TreeNode {
@@ -229,6 +243,7 @@ impl TreeNode {
             cursor_info: None,
             url: None,
             hint: None,
+            collapsed_input: None,
         }
     }
 
@@ -250,6 +265,7 @@ impl TreeNode {
         self.ref_id = None;
         self.depth = 0;
         self.cursor_info = None;
+        self.collapsed_input = None;
     }
 
     /// The name an interactive snapshot prints: the accessible name, or the cursor-interactive text when that is empty.
@@ -507,14 +523,16 @@ pub async fn take_snapshot(
 
     for (idx, node) in tree_nodes.iter().enumerate() {
         let role = node.role.as_str();
-        let mut should_ref =
-            if INTERACTIVE_ROLES.contains(&role) || TABLE_CELL_ROLES.contains(&role) {
-                true
-            } else if CONTENT_ROLES.contains(&role) {
-                !node.name.is_empty()
-            } else {
-                false
-            };
+        let mut should_ref = if INTERACTIVE_ROLES.contains(&role)
+            || TABLE_CELL_ROLES.contains(&role)
+            || DATE_TIME_ROLES.contains(&role)
+        {
+            true
+        } else if CONTENT_ROLES.contains(&role) {
+            !node.name.is_empty()
+        } else {
+            false
+        };
 
         if node
             .backend_node_id
@@ -616,6 +634,25 @@ pub async fn take_snapshot(
     for (idx, hint) in call_on_nodes(client, effective_session_id, &hint_nodes, HINT_FUNCTION).await
     {
         tree_nodes[idx].hint = Some(hint);
+    }
+
+    // Date/time inputs: read the real input type and value so they render as one control.
+    let date_nodes: Vec<(usize, i64)> = tree_nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.has_ref && DATE_TIME_ROLES.contains(&n.role.as_str()))
+        .filter_map(|(i, n)| n.backend_node_id.map(|bid| (i, bid)))
+        .collect();
+    if !date_nodes.is_empty() {
+        let read =
+            "function() { return this.tagName === 'INPUT' ? this.type + '|' + this.value : ''; }";
+        for (idx, found) in call_on_nodes(client, effective_session_id, &date_nodes, read).await {
+            if let Some((t, v)) = found.split_once('|') {
+                if date_time_format(t).is_some() {
+                    tree_nodes[idx].collapsed_input = Some((t.to_string(), v.to_string()));
+                }
+            }
+        }
     }
 
     if options.urls {
@@ -1177,6 +1214,7 @@ fn build_tree(nodes: &[AXNode]) -> (Vec<TreeNode>, Vec<usize>) {
             cursor_info: None,
             url: None,
             hint: None,
+            collapsed_input: None,
         });
         id_to_idx.insert(node.node_id.clone(), i);
     }
@@ -1317,6 +1355,20 @@ fn render_tree(
         for &child in &node.children {
             render_tree(nodes, child, indent, output, options);
         }
+        return;
+    }
+
+    if let Some((input_type, value)) = &node.collapsed_input {
+        // One labelled textbox instead of the internal spinbuttons and picker button.
+        output.push_str(&format!(
+            "{}- textbox {} [ref={}] value={} (type={}, fill with {})\n",
+            "  ".repeat(indent),
+            serde_json::to_string(&normalize_snapshot_name(&node.name)).unwrap_or_default(),
+            node.ref_id.as_deref().unwrap_or(""),
+            serde_json::to_string(value).unwrap_or_default(),
+            input_type,
+            date_time_format(input_type).unwrap_or("")
+        ));
         return;
     }
 

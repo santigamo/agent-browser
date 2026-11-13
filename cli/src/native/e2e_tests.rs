@@ -17076,3 +17076,159 @@ async fn e2e_flow_a_route_limited_by_resource_type_applies_the_same_on_both_tier
     }
     let _ = exec(&run(&mut n, json!({ "action": "close" })), &mut state).await;
 }
+
+// ---------------------------------------------------------------------------
+// fill on structured inputs, and the collapsed date/time snapshot line
+// ---------------------------------------------------------------------------
+
+async fn open_data_page(state: &mut DaemonState, html: &str) {
+    let url = format!("data:text/html;base64,{}", STANDARD.encode(html));
+    assert_success(
+        &execute_command(
+            &json!({ "id": "launch", "action": "launch", "headless": true }),
+            state,
+        )
+        .await,
+    );
+    assert_success(
+        &execute_command(
+            &json!({ "id": "nav", "action": "navigate", "url": url }),
+            state,
+        )
+        .await,
+    );
+}
+
+async fn fill_selector(state: &mut DaemonState, selector: &str, value: &str) -> Value {
+    execute_command(
+        &json!({ "id": "fill", "action": "fill", "selector": selector, "value": value }),
+        state,
+    )
+    .await
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_fill_sets_structured_inputs_and_rejects_values_the_browser_would_drop() {
+    let html = r#"<!doctype html><body>
+<input type="date" id="d" aria-label="Day"><input type="time" id="t" aria-label="Clock">
+<input type="color" id="c" aria-label="Tint"><input type="range" id="r" min="0" max="10" step="1" aria-label="Level">
+<input type="date" id="dd" disabled aria-label="Locked"><input type="range" id="ro" readonly aria-label="Fixed">
+<input type="text" id="x" aria-label="Plain">
+<script>window.events = []; for (const id of ['d','c','r']) { const e = document.getElementById(id); e.addEventListener('input', () => events.push(id + ':input')); e.addEventListener('change', () => events.push(id + ':change')); }</script>"#;
+    let mut state = DaemonState::new();
+    open_data_page(&mut state, html).await;
+
+    assert_success(&fill_selector(&mut state, "#d", "2026-03-14").await);
+    assert_evaluate(
+        &mut state,
+        "v1",
+        "document.getElementById('d').value",
+        json!("2026-03-14"),
+    )
+    .await;
+    assert_success(&fill_selector(&mut state, "#t", "19:30").await);
+    assert_evaluate(
+        &mut state,
+        "v2",
+        "document.getElementById('t').value",
+        json!("19:30"),
+    )
+    .await;
+    assert_success(&fill_selector(&mut state, "#c", "#FF8800").await);
+    assert_evaluate(
+        &mut state,
+        "v3",
+        "document.getElementById('c').value",
+        json!("#ff8800"),
+    )
+    .await;
+    assert_success(&fill_selector(&mut state, "#r", "7").await);
+    assert_evaluate(
+        &mut state,
+        "v4",
+        "document.getElementById('r').value",
+        json!("7"),
+    )
+    .await;
+    assert_evaluate(
+        &mut state,
+        "v5",
+        "events.join(',')",
+        json!("d:input,d:change,c:input,c:change,r:input,r:change"),
+    )
+    .await;
+
+    // the browser silently sanitizes these; fill must say so instead of reporting success
+    let bad_date = fill_selector(&mut state, "#d", "14/03/2026").await;
+    assert_eq!(bad_date["success"], false, "{bad_date}");
+    assert!(
+        bad_date["error"].as_str().unwrap().contains("YYYY-MM-DD"),
+        "{bad_date}"
+    );
+    let bad_color = fill_selector(&mut state, "#c", "orange").await;
+    assert_eq!(bad_color["success"], false, "{bad_color}");
+    assert!(
+        bad_color["error"].as_str().unwrap().contains("#rrggbb"),
+        "{bad_color}"
+    );
+    let clamped = fill_selector(&mut state, "#r", "99").await;
+    assert_eq!(clamped["success"], false, "{clamped}");
+    assert!(
+        clamped["error"].as_str().unwrap().contains("max 10"),
+        "{clamped}"
+    );
+    // a rejected fill leaves the previous value in place
+    assert_evaluate(
+        &mut state,
+        "v6",
+        "document.getElementById('r').value",
+        json!("7"),
+    )
+    .await;
+
+    let disabled = fill_selector(&mut state, "#dd", "2026-03-14").await;
+    assert!(
+        disabled["error"].as_str().unwrap().contains("is disabled"),
+        "{disabled}"
+    );
+    let readonly = fill_selector(&mut state, "#ro", "3").await;
+    assert!(
+        readonly["error"].as_str().unwrap().contains("is read-only"),
+        "{readonly}"
+    );
+
+    // ordinary text inputs keep the keyboard path
+    assert_success(&fill_selector(&mut state, "#x", "hello").await);
+    assert_evaluate(
+        &mut state,
+        "v7",
+        "document.getElementById('x').value",
+        json!("hello"),
+    )
+    .await;
+    let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_snapshot_collapses_date_and_time_inputs_to_one_textbox() {
+    let html = r#"<!doctype html><body><label>Visit day <input type="date" value="2026-03-14"></label>
+<label>Visit time <input type="time"></label>"#;
+    let mut state = DaemonState::new();
+    open_data_page(&mut state, html).await;
+    let resp = execute_command(
+        &json!({ "id": "s", "action": "snapshot", "interactive": true }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+    let snap = get_data(&resp)["snapshot"].as_str().unwrap().to_string();
+    assert!(
+        snap.contains("(type=date, fill with YYYY-MM-DD)") && snap.contains("value=\"2026-03-14\""),
+        "{snap}"
+    );
+    assert!(snap.contains("(type=time, fill with HH:MM)"), "{snap}");
+    assert!(!snap.contains("spinbutton"), "{snap}");
+    let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+}
