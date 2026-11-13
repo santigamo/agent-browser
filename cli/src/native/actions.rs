@@ -7270,6 +7270,23 @@ async fn handle_click(cmd: &Value, state: &mut DaemonState) -> Result<Value, Str
     let button = cmd.get("button").and_then(|v| v.as_str()).unwrap_or("left");
     let click_count = cmd.get("clickCount").and_then(|v| v.as_i64()).unwrap_or(1) as i32;
 
+    // A checkbox or radio the user cannot see is clicked through its visible label (or itself).
+    if button == "left" && click_count == 1 && !crate::fork::restores("hidden-input") {
+        let settle_rx = settle_receiver(cmd, &mgr.client);
+        if let Some(note) = interaction::click_hidden_checkable(
+            &mgr.client,
+            &session_id,
+            &state.ref_map,
+            selector,
+            &state.iframe_sessions,
+        )
+        .await?
+        {
+            settle_after_action(settle_rx, &session_id).await;
+            return Ok(json!({ "clicked": selector, "note": note }));
+        }
+    }
+
     let input_mode = cmd
         .get("inputMode")
         .and_then(Value::as_str)

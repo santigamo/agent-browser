@@ -89,7 +89,7 @@ Delta history is per tab and option set. Responses are `full`, `unchanged`, or `
 ## Interactions (use @refs from snapshot)
 
 ```bash
-agent-browser click @e1           # Click
+agent-browser click @e1           # Click (a hidden checkbox/radio is activated through its visible label, with a note)
 agent-browser click @e1 --new-tab # Click and open in new tab
 agent-browser dblclick @e1        # Double-click
 agent-browser focus @e1           # Focus element

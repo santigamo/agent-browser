@@ -17785,3 +17785,103 @@ async fn e2e_wait_fails_fast_on_a_settled_page_but_not_with_a_chosen_timeout_or_
     let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
     server.abort();
 }
+
+// ---------------------------------------------------------------------------
+// click on a hidden checkbox or radio
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore]
+async fn e2e_click_on_a_hidden_checkbox_goes_through_its_visible_label() {
+    let html = r##"<!doctype html><body>
+<label id="lab" for="cb" style="display:inline-block;padding:8px">Accept terms</label>
+<input type="checkbox" id="cb" style="position:absolute;opacity:0;width:0;height:0">
+<input type="checkbox" id="bare" style="display:none">
+<input type="checkbox" id="locked" disabled style="display:none"><label for="locked">Locked</label>
+<input type="text" id="txt" style="display:none">
+<input type="checkbox" id="shown"><iframe id="f" srcdoc='<label for="fcb" style="display:inline-block;padding:6px">In frame</label><input type="checkbox" id="fcb" style="display:none">'></iframe>
+<script>window.changes = []; document.addEventListener('change', (e) => changes.push(e.target.id));</script>"##;
+    let mut state = DaemonState::new();
+    open_data_page(&mut state, html).await;
+    let click = |sel: &str| json!({ "id": "c", "action": "click", "selector": sel });
+    // hidden checkbox with a visible label: clicks the label, says so, toggles the box
+    let resp = execute_command(&click("#cb"), &mut state).await;
+    assert_success(&resp);
+    let note = get_data(&resp)["note"].as_str().expect("a note");
+    assert!(
+        note.contains("hidden input") && note.contains("label") && note.contains("now checked"),
+        "{note}"
+    );
+    assert_evaluate(
+        &mut state,
+        "v1",
+        "document.getElementById('cb').checked",
+        json!(true),
+    )
+    .await;
+    // clicking the label itself is an ordinary click, no note
+    let resp = execute_command(&click("#lab"), &mut state).await;
+    assert_success(&resp);
+    assert!(get_data(&resp).get("note").is_none());
+    assert_evaluate(
+        &mut state,
+        "v2",
+        "document.getElementById('cb').checked",
+        json!(false),
+    )
+    .await;
+    // a visible checkbox is an ordinary click as well
+    let resp = execute_command(&click("#shown"), &mut state).await;
+    assert_success(&resp);
+    assert!(get_data(&resp).get("note").is_none());
+    // no label at all: the input itself, and the note says that
+    let resp = execute_command(&click("#bare"), &mut state).await;
+    assert_success(&resp);
+    assert!(get_data(&resp)["note"]
+        .as_str()
+        .unwrap()
+        .contains("no visible label"));
+    assert_evaluate(
+        &mut state,
+        "v3",
+        "document.getElementById('bare').checked",
+        json!(true),
+    )
+    .await;
+    // disabled: a clear error, nothing toggled
+    let resp = execute_command(&click("#locked"), &mut state).await;
+    assert_eq!(resp["success"], false, "{resp}");
+    assert!(
+        resp["error"].as_str().unwrap().contains("disabled"),
+        "{resp}"
+    );
+    // only checkbox and radio inputs are redirected: a hidden text input still fails as before
+    let resp = execute_command(&click("#txt"), &mut state).await;
+    assert_eq!(resp["success"], false, "{resp}");
+    // nothing was left behind in the page
+    assert_evaluate(
+        &mut state,
+        "v4",
+        "document.querySelectorAll('[data-ab-standin],[data-ab-loc]').length",
+        json!(0),
+    )
+    .await;
+    // inside an iframe the element is resolved in its own frame
+    assert_success(
+        &execute_command(
+            &json!({ "id": "f", "action": "frame", "selector": "#f" }),
+            &mut state,
+        )
+        .await,
+    );
+    let resp = execute_command(&click("#fcb"), &mut state).await;
+    assert_success(&resp);
+    assert!(
+        get_data(&resp)["note"]
+            .as_str()
+            .unwrap()
+            .contains("now checked"),
+        "{resp}"
+    );
+    let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+}
