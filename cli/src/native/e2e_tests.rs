@@ -17426,3 +17426,30 @@ customElements.define('my-box', class extends HTMLElement { constructor() { supe
     }
     let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
 }
+
+#[tokio::test]
+#[ignore]
+async fn e2e_wait_url_returns_after_the_new_page_has_loaded() {
+    let (port, server) = fixture_server(vec![
+        (
+            "/start",
+            page("<script>setTimeout(() => { location.href = '/next'; }, 200)</script>"),
+        ),
+        // the image answers after 1.5 s, so `load` fires well after the URL commits
+        ("/next", page("<h1>Next</h1><img src=\"/slow.html\">")),
+        ("/slow.html", Route::Html(String::new(), 1500)),
+    ])
+    .await;
+    let mut state = DaemonState::new();
+    launch_and_open(&mut state, &format!("http://127.0.0.1:{port}/start")).await;
+    assert_success(
+        &execute_command(
+            &json!({ "id": "w", "action": "waitforurl", "url": "**/next", "timeout": 8000 }),
+            &mut state,
+        )
+        .await,
+    );
+    assert_evaluate(&mut state, "r", "document.readyState", json!("complete")).await;
+    let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+    server.abort();
+}

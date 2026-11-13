@@ -6,6 +6,7 @@ mod commands;
 mod connection;
 mod doctor;
 mod flags;
+mod fork;
 mod install;
 mod mcp;
 mod native;
