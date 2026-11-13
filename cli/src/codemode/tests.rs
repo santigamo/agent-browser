@@ -36,6 +36,7 @@ fn with_mock(script: &str, respond: fn(&[String], usize) -> Value) -> (Vec<Vec<S
             Function::new(ctx.clone(), || 60_000f64).unwrap(),
         )
         .unwrap();
+        g.set("__DOM_LIB", "(/* page library */ null)").unwrap();
         ctx.eval::<(), _>(PRELUDE).unwrap();
         let wrapped = format!(
             "(() => {{ try {{ return 'ok:' + JSON.stringify((() => {{ {script} }})()); }} \
@@ -374,4 +375,103 @@ fn stack_line_is_extracted() {
         line_from_stack("    at <anonymous> (eval_script:7:12)\n"),
         Some(7)
     );
+}
+
+#[test]
+fn selector_strings_split_on_the_chain_operator_only_outside_quotes() {
+    let (_, out) = with_mock(
+        r#"return [
+            parseSel('a >> text=Next').map((s) => s.k),
+            parseSel('p:has-text("x >> y")').map((s) => s.k + ':' + (s.v || '')),
+            parseSel("p:has-text('a >> b') >> text=c").map((s) => s.k),
+            parseSel('div[title="a >> b"]').map((s) => s.k + ':' + s.v),
+            parseSel(':has-text("z")').map((s) => s.k + (s.bare ? ':bare' : '')),
+            parseSel('li:has-text("z") .t').map((s) => s.k + (s.bare ? ':bare' : '')),
+            ENGINE.test('#plain .css'), ENGINE.test('a >> b'), ENGINE.test('text=x'),
+        ];"#,
+        |_, _| ok(),
+    );
+    let v: Value = serde_json::from_str(out.strip_prefix("ok:").unwrap()).unwrap();
+    assert_eq!(v[0], json!(["css", "text"]));
+    assert_eq!(v[1], json!(["css:p", "has-text:x >> y"]));
+    assert_eq!(v[2], json!(["css", "has-text", "text"]));
+    assert_eq!(v[3], json!(["css:div[title=\"a >> b\"]"]));
+    // a filter with nothing before it applies to every element and is marked bare
+    assert_eq!(v[4], json!(["css", "has-text:bare"]));
+    assert_eq!(v[5], json!(["css", "has-text", "css"]));
+    assert_eq!(v[6], false);
+    assert_eq!(v[7], true);
+    assert_eq!(v[8], true);
+}
+
+#[test]
+fn plain_css_and_refs_never_go_through_the_resolver() {
+    let (calls, _) = with_mock(
+        "page.click('#a'); page.fill('@e3', 'x'); page.count('li.x');",
+        |_, _| json!({"success": true, "data": {"count": 2}}),
+    );
+    assert!(!calls.iter().any(|c| c[0] == "eval"));
+}
+
+#[test]
+fn locator_steps_send_the_resolver_with_the_spec_and_act_on_the_marker() {
+    let (calls, out) = with_mock(
+        "page.getByRole('button', {name: /go/i}).click(); \
+         return page.locator('a:has-text(\"Next\") >> nth=1').count();",
+        |a, _| match a[0].as_str() {
+            "eval" => {
+                json!({"success": true, "data": {"result": {"n": 3, "all": 3, "visible": 1, "picked": true, "items": []}}})
+            }
+            _ => ok(),
+        },
+    );
+    assert_eq!(out, "ok:3");
+    assert_eq!(calls[0][0], "eval");
+    assert!(
+        calls[0][1].contains("\"k\":\"role\"") && calls[0][1].contains("\"re\":\"go\""),
+        "{}",
+        calls[0][1]
+    );
+    assert_eq!(calls[1][0], "click");
+    assert!(
+        calls[1][1].starts_with("[data-ab-loc=\"l") && calls[1][1].ends_with("\"]"),
+        "{:?}",
+        calls[1]
+    );
+    // a count resolves without tagging
+    assert!(calls[2][1].contains("\"tag\":false"), "{}", calls[2][1]);
+}
+
+#[test]
+fn an_eval_that_fails_is_reported_as_such_and_never_as_not_found() {
+    let (_, out) = with_mock("page.getByText('x').click();", |a, _| match a[0].as_str() {
+        "eval" => json!({"success": false, "error": "Execution context was destroyed"}),
+        _ => ok(),
+    });
+    assert!(
+        out.contains("could not evaluate the locator text=x: Execution context was destroyed")
+            && !out.contains("Element not found"),
+        "{out}"
+    );
+}
+
+#[test]
+fn unsupported_keys_are_type_errors_that_name_them() {
+    let (_, out) = with_mock("page.click('#a', {force: true});", |_, _| ok());
+    assert!(
+        out.starts_with("err:page.click(): unsupported option 'force'"),
+        "{out}"
+    );
+    let (_, out) = with_mock(
+        "page.getByText('x').filter({has: page.locator('a')});",
+        |_, _| ok(),
+    );
+    assert!(
+        out.contains("unsupported option 'has' (supported: hasText)"),
+        "{out}"
+    );
+    let (_, out) = with_mock("page.waitFor({selector: '#a', state: 'ready'});", |_, _| {
+        ok()
+    });
+    assert!(out.contains("unsupported state 'ready'"), "{out}");
 }

@@ -16,13 +16,20 @@ use std::io::Read as _;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-/// The JavaScript half, in the order it is evaluated: log capture, target resolution, page API.
+/// The JavaScript half, in the order it is evaluated: log capture, selector parser, the resolver
+/// (whose source runs in the page), target resolution, the page API and the locator objects.
 const PRELUDE: &str = concat!(
     include_str!("js/log.js"),
+    "\n",
+    include_str!("js/selector.js"),
+    "\n",
+    include_str!("js/resolver.js"),
     "\n",
     include_str!("js/targets.js"),
     "\n",
     include_str!("js/page.js"),
+    "\n",
+    include_str!("js/locator.js"),
 );
 /// Bound on what `console.log` may collect inside the script (the printed output is capped
 /// separately, like any page text).
@@ -263,6 +270,9 @@ pub fn run_script_within(
         g.set("__remaining", remaining_fn)
             .map_err(|e| e.to_string())?;
         g.set("__logCap", LOG_CAP_CHARS as f64)
+            .map_err(|e| e.to_string())?;
+        // The page-side library the resolver and the cleanup embed in their `eval` code.
+        g.set("__DOM_LIB", crate::native::dom_js::DOM_LIB_JS)
             .map_err(|e| e.to_string())?;
 
         ctx.eval::<(), _>(PRELUDE)
