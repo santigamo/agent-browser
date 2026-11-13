@@ -17232,3 +17232,197 @@ async fn e2e_snapshot_collapses_date_and_time_inputs_to_one_textbox() {
     assert!(!snap.contains("spinbutton"), "{snap}");
     let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
 }
+
+// ---------------------------------------------------------------------------
+// Local fixture server and the CSS target tests (shadow roots, visible matches, waits)
+// ---------------------------------------------------------------------------
+
+/// How a fixture route answers.
+#[derive(Clone)]
+enum Route {
+    /// An HTML page, sent after the given delay in milliseconds.
+    Html(String, u64),
+    /// Accepts the connection and never answers, so any page that embeds it never fires `load`.
+    Hang,
+}
+
+/// A tiny HTTP server for the e2e tests: `routes` maps a path to its answer, anything else is a
+/// small "Not found" page. Returns the port and the server task.
+async fn fixture_server(routes: Vec<(&'static str, Route)>) -> (u16, tokio::task::JoinHandle<()>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let routes = Arc::new(routes);
+    let handle = tokio::spawn(async move {
+        let held = Arc::new(Mutex::new(Vec::new()));
+        loop {
+            let Ok((mut sock, _)) = listener.accept().await else {
+                return;
+            };
+            let routes = routes.clone();
+            let held = held.clone();
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 4096];
+                let n = sock.read(&mut buf).await.unwrap_or(0);
+                let request = String::from_utf8_lossy(&buf[..n]).to_string();
+                let path = request
+                    .split_whitespace()
+                    .nth(1)
+                    .unwrap_or("/")
+                    .split('?')
+                    .next()
+                    .unwrap_or("/")
+                    .to_string();
+                let route = routes
+                    .iter()
+                    .find(|(p, _)| *p == path)
+                    .map(|(_, r)| r.clone());
+                let (body, delay) = match route {
+                    Some(Route::Hang) => {
+                        held.lock().unwrap().push(sock);
+                        return;
+                    }
+                    Some(Route::Html(body, delay)) => (body, delay),
+                    None => ("<html><body>Not found</body></html>".to_string(), 0),
+                };
+                if delay > 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                }
+                let resp = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = sock.write_all(resp.as_bytes()).await;
+                let _ = sock.shutdown().await;
+            });
+        }
+    });
+    (port, handle)
+}
+
+fn page(body: &str) -> Route {
+    Route::Html(
+        format!(
+            "<!doctype html><html><head><title>Fixture</title></head><body>{body}</body></html>"
+        ),
+        0,
+    )
+}
+
+async fn launch_and_open(state: &mut DaemonState, url: &str) {
+    assert_success(
+        &execute_command(
+            &json!({ "id": "launch", "action": "launch", "headless": true }),
+            state,
+        )
+        .await,
+    );
+    assert_success(
+        &execute_command(
+            &json!({ "id": "nav", "action": "navigate", "url": url }),
+            state,
+        )
+        .await,
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_css_targets_pierce_open_shadow_roots_with_one_walker() {
+    let html = r#"<!doctype html><p id="n">light</p><my-box></my-box><script>
+customElements.define('my-box', class extends HTMLElement { constructor() { super();
+  const r = this.attachShadow({ mode: 'open' });
+  r.innerHTML = '<label>Name <input id="n"></label><button id="go">Go</button><p id="out"></p><inner-box></inner-box>';
+  r.getElementById('go').onclick = () => { r.getElementById('out').textContent = 'hi ' + r.getElementById('n').value; }; } });
+customElements.define('inner-box', class extends HTMLElement { constructor() { super();
+  this.attachShadow({ mode: 'open' }).innerHTML = '<span id="deep">deep text</span>'; } });
+</script>"#;
+    let mut state = DaemonState::new();
+    open_data_page(&mut state, html).await;
+    let get =
+        |id: &str, selector: &str| json!({ "id": id, "action": "gettext", "selector": selector });
+    // the light DOM match comes first when both exist
+    let r = execute_command(&get("a", "#n"), &mut state).await;
+    assert_eq!(get_data(&r)["text"], "light");
+    // a descendant selector crosses the shadow boundary
+    assert_success(&fill_selector(&mut state, "my-box input", "Ana").await);
+    assert_success(
+        &execute_command(
+            &json!({ "id": "c", "action": "click", "selector": "#go" }),
+            &mut state,
+        )
+        .await,
+    );
+    let r = execute_command(&get("d", "#out"), &mut state).await;
+    assert_eq!(get_data(&r)["text"], "hi Ana");
+    // nested shadow roots
+    let r = execute_command(&get("e", "#deep"), &mut state).await;
+    assert_eq!(get_data(&r)["text"], "deep text");
+    // count agrees with find: light + shadow
+    let r = execute_command(
+        &json!({ "id": "f", "action": "count", "selector": "#n" }),
+        &mut state,
+    )
+    .await;
+    assert_eq!(get_data(&r)["count"], 2);
+    assert_success(
+        &execute_command(
+            &json!({ "id": "g", "action": "wait", "selector": "#deep", "timeout": 2000 }),
+            &mut state,
+        )
+        .await,
+    );
+    let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_wait_and_click_use_the_same_visible_match() {
+    let (port, server) = fixture_server(vec![(
+        "/multi",
+        page(
+            r#"<button class="item" style="display:none" onclick="window.hit='hidden'">template</button>
+<button class="item" onclick="window.hit='visible'">second</button><p>Settled page text</p>"#,
+        ),
+    )])
+    .await;
+    let mut state = DaemonState::new();
+    launch_and_open(&mut state, &format!("http://127.0.0.1:{port}/multi")).await;
+    // the first .item is display:none, the second is visible: the wait succeeds ...
+    assert_success(
+        &execute_command(
+            &json!({ "id": "w", "action": "wait", "selector": "button.item", "timeout": 3000 }),
+            &mut state,
+        )
+        .await,
+    );
+    // ... and a click on the same selector lands on the visible one
+    assert_success(
+        &execute_command(
+            &json!({ "id": "c", "action": "click", "selector": "button.item" }),
+            &mut state,
+        )
+        .await,
+    );
+    assert_evaluate(&mut state, "v", "window.hit", json!("visible")).await;
+    let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+    server.abort();
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_wait_text_ignores_style_script_and_hidden_text_in_shadow_roots() {
+    let html = r#"<!doctype html><p>plain visible</p><my-box></my-box><script>
+customElements.define('my-box', class extends HTMLElement { constructor() { super();
+  this.attachShadow({ mode: 'open' }).innerHTML = '<style>.only-in-css { color: red }</style><script>var onlyInScript = 1<\/script><p>shadow shown</p><p style="display:none">shadow hidden words</p>'; } });
+</script>"#;
+    let mut state = DaemonState::new();
+    open_data_page(&mut state, html).await;
+    let wait = |text: &str| json!({ "id": "w", "action": "wait", "text": text, "timeout": 600 });
+    assert_success(&execute_command(&wait("shadow shown"), &mut state).await);
+    for absent in ["only-in-css", "onlyInScript", "shadow hidden words"] {
+        let r = execute_command(&wait(absent), &mut state).await;
+        assert_eq!(r["success"], false, "{absent}: {r}");
+    }
+    let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+}

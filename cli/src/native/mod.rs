@@ -15,6 +15,8 @@ pub mod daemon;
 #[allow(dead_code)]
 pub mod diff;
 #[allow(dead_code)]
+pub mod dom_js;
+#[allow(dead_code)]
 pub mod downloads;
 #[allow(dead_code)]
 pub mod element;

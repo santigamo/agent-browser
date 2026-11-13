@@ -963,34 +963,15 @@ fn build_find_element_js(selector: &str) -> String {
 }
 
 /// Same as build_find_element_js but rooted at an arbitrary Document
-/// expression (e.g. an iframe's contentDocument).
+/// expression (e.g. an iframe's contentDocument). CSS targets search the light DOM first and
+/// then open shadow roots, and prefer a visible match (see `dom_js`).
 fn build_find_element_js_in(root: &str, selector: &str) -> String {
-    if let Some(xpath) = selector.strip_prefix("xpath=") {
-        format!(
-            "{root}.evaluate({xpath}, {root}, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue",
-            xpath = serde_json::to_string(xpath).unwrap_or_default(),
-        )
-    } else {
-        format!(
-            "{root}.querySelector({selector})",
-            selector = serde_json::to_string(selector).unwrap_or_default(),
-        )
-    }
+    super::dom_js::find_expr(root, selector)
 }
 
 /// Build a JS expression that counts matching DOM elements by CSS selector or XPath.
 fn build_count_elements_js(selector: &str) -> String {
-    if let Some(xpath) = selector.strip_prefix("xpath=") {
-        format!(
-            "document.evaluate({}, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null).snapshotLength",
-            serde_json::to_string(xpath).unwrap_or_default()
-        )
-    } else {
-        format!(
-            "document.querySelectorAll({}).length",
-            serde_json::to_string(selector).unwrap_or_default()
-        )
-    }
+    super::dom_js::count_expr(selector)
 }
 
 /// JS function source for `blockerAt(doc, el, x, y)`: returns a short
@@ -1848,7 +1829,7 @@ mod tests {
     #[test]
     fn test_build_selector_js_css() {
         let js = build_selector_js("#submit-btn");
-        assert!(js.contains("document.querySelector(\"#submit-btn\")"));
+        assert!(js.contains(".first(document, \"#submit-btn\")"));
         assert!(!js.contains("document.evaluate"));
     }
 
@@ -1869,13 +1850,13 @@ mod tests {
     fn test_build_selector_js_not_xpath_prefix() {
         // "xpath" without "=" should be treated as CSS selector
         let js = build_selector_js("xpath//div");
-        assert!(js.contains("document.querySelector"));
+        assert!(js.contains(".first(document, \"xpath//div\")"));
     }
 
     #[test]
     fn test_build_count_elements_js_css() {
         let js = build_count_elements_js(".item");
-        assert!(js.contains("document.querySelectorAll(\".item\").length"));
+        assert!(js.contains(".all(document, \".item\")") && js.contains(".length"));
         assert!(!js.contains("document.evaluate"));
     }
 

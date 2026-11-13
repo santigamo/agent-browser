@@ -7806,36 +7806,7 @@ async fn wait_for_selector(
     state: &str,
     timeout_ms: u64,
 ) -> Result<(), String> {
-    let check_fn = match state {
-        "attached" => format!(
-            "!!document.querySelector({})",
-            serde_json::to_string(selector).unwrap_or_default()
-        ),
-        "detached" => format!(
-            "!document.querySelector({})",
-            serde_json::to_string(selector).unwrap_or_default()
-        ),
-        "hidden" => format!(
-            r#"(() => {{
-                const el = document.querySelector({sel});
-                if (!el) return true;
-                const s = window.getComputedStyle(el);
-                return s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0;
-            }})()"#,
-            sel = serde_json::to_string(selector).unwrap_or_default()
-        ),
-        _ => format!(
-            r#"(() => {{
-                const el = document.querySelector({sel});
-                if (!el) return false;
-                const r = el.getBoundingClientRect();
-                const s = window.getComputedStyle(el);
-                return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
-            }})()"#,
-            sel = serde_json::to_string(selector).unwrap_or_default()
-        ),
-    };
-
+    let check_fn = super::dom_js::state_check_expr("document", selector, state);
     poll_until_true(client, session_id, &check_fn, timeout_ms).await
 }
 
@@ -7862,11 +7833,13 @@ async fn wait_for_text(
     text: &str,
     timeout_ms: u64,
 ) -> Result<(), String> {
-    let check_fn = format!(
-        "(document.body.innerText || '').includes({})",
-        serde_json::to_string(text).unwrap_or_default()
-    );
-    poll_until_true(client, session_id, &check_fn, timeout_ms).await
+    poll_until_true(
+        client,
+        session_id,
+        &super::dom_js::text_check_expr(text),
+        timeout_ms,
+    )
+    .await
 }
 
 async fn wait_for_function(
@@ -7892,28 +7865,7 @@ async fn wait_for_selector_in_frame(
 ) -> Result<(), String> {
     let owner_object_id =
         super::element::frame_owner_object_id(client, session_id, frame_id).await?;
-    let sel = serde_json::to_string(selector).unwrap_or_default();
-    let check = match state {
-        "attached" => format!("!!doc.querySelector({sel})"),
-        "detached" => format!("!doc.querySelector({sel})"),
-        "hidden" => format!(
-            r#"(() => {{
-                const el = doc.querySelector({sel});
-                if (!el) return true;
-                const s = doc.defaultView.getComputedStyle(el);
-                return s.display === 'none' || s.visibility === 'hidden' || parseFloat(s.opacity) === 0;
-            }})()"#,
-        ),
-        _ => format!(
-            r#"(() => {{
-                const el = doc.querySelector({sel});
-                if (!el) return false;
-                const r = el.getBoundingClientRect();
-                const s = doc.defaultView.getComputedStyle(el);
-                return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
-            }})()"#,
-        ),
-    };
+    let check = super::dom_js::state_check_expr("doc", selector, state);
     let function = format!(
         "function() {{ const doc = this.contentDocument; if (!doc) return false; return {check}; }}",
     );
