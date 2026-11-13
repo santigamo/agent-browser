@@ -1034,6 +1034,24 @@ fn parse_command_inner(
                     "-u" | "--urls" => {
                         obj.insert("urls".to_string(), json!(true));
                     }
+                    "--all" => {
+                        obj.insert("all".to_string(), json!(true));
+                    }
+                    "--find" => match rest.get(i + 1) {
+                        Some(f) if !f.trim().is_empty() => {
+                            obj.insert("find".to_string(), json!(f));
+                            i += 1;
+                        }
+                        _ => {
+                            return Err(ParseError::MissingArguments {
+                                context: "snapshot --find".to_string(),
+                                usage: "snapshot --find <text>",
+                            })
+                        }
+                    },
+                    "--hidden-text" => {
+                        obj.insert("hiddenText".to_string(), json!(true));
+                    }
                     "-d" | "--depth" => {
                         if let Some(d) = rest.get(i + 1) {
                             if let Ok(n) = d.parse::<i32>() {
@@ -5438,6 +5456,21 @@ mod tests {
     fn test_snapshot() {
         let cmd = parse_command(&args("snapshot"), &default_flags()).unwrap();
         assert_eq!(cmd["action"], "snapshot");
+    }
+
+    #[test]
+    fn snapshot_find_hidden_text_and_all_flags_parse() {
+        let cmd = parse_command(
+            &args("snapshot --find shipping --hidden-text -s #main"),
+            &default_flags(),
+        )
+        .unwrap();
+        assert_eq!(cmd["find"], "shipping");
+        assert_eq!(cmd["hiddenText"], true);
+        assert_eq!(cmd["selector"], "#main");
+        assert!(parse_command(&args("snapshot --find"), &default_flags()).is_err());
+        let cmd = parse_command(&args("snapshot -i --all"), &default_flags()).unwrap();
+        assert_eq!(cmd["all"], true);
     }
 
     #[test]

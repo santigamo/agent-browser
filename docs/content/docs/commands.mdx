@@ -39,6 +39,9 @@ agent-browser screenshot --screenshot-dir ./shots    # Save to custom directory
 agent-browser screenshot --screenshot-format jpeg --screenshot-quality 80
 agent-browser pdf <path>              # Save page as PDF
 agent-browser snapshot                # Accessibility tree with refs
+agent-browser snapshot -i --all       # Every interactive item (the default caps -i at 300 and counts the rest)
+agent-browser snapshot --find <text>  # Only lines whose role or name contains text, with their ancestors
+agent-browser snapshot --hidden-text  # Also the text a snapshot omits (closed details, hidden elements)
 agent-browser eval <js>               # Run JavaScript
 agent-browser connect <port|url>      # Connect to browser via CDP
 agent-browser stream enable [--port <port>]  # Start runtime WebSocket streaming

@@ -196,7 +196,13 @@ pub struct SnapshotOptions {
     pub compact: bool,
     pub depth: Option<usize>,
     pub urls: bool,
+    /// Lift the interactive item cap (`snapshot -i --all`).
+    pub all: bool,
 }
+
+/// An interactive snapshot lists at most this many referenced elements unless `--all` is given;
+/// a busy page (a repository listing, a long table) otherwise costs tens of kilobytes.
+const INTERACTIVE_ITEM_CAP: usize = 300;
 
 struct TreeNode {
     role: String,
@@ -669,8 +675,25 @@ pub async fn take_snapshot(
     }
 
     let mut output = String::new();
+    let mut budget = RenderBudget::default();
+    // AGENT_BROWSER_UPSTREAM_DEFAULTS=snapshot-cap lists every interactive item, as upstream does.
+    let uncapped = options.all || crate::fork::restores("snapshot-cap");
     for &root_idx in &effective_roots {
-        render_tree(&tree_nodes, root_idx, 0, &mut output, options);
+        render_tree(
+            &tree_nodes,
+            root_idx,
+            0,
+            &mut output,
+            options,
+            uncapped,
+            &mut budget,
+        );
+    }
+    if budget.omitted > 0 {
+        output.push_str(&format!(
+            "[{} more interactive items not shown; use -s <selector> to scope the snapshot or --all to list everything]\n",
+            budget.omitted
+        ));
     }
 
     // Recurse into child iframes: for each Iframe node with a backend_node_id,
@@ -1313,12 +1336,20 @@ fn build_tree(nodes: &[AXNode]) -> (Vec<TreeNode>, Vec<usize>) {
     (tree_nodes, root_indices)
 }
 
+#[derive(Default)]
+struct RenderBudget {
+    shown: usize,
+    omitted: usize,
+}
+
 fn render_tree(
     nodes: &[TreeNode],
     idx: usize,
     indent: usize,
     output: &mut String,
     options: &SnapshotOptions,
+    uncapped: bool,
+    budget: &mut RenderBudget,
 ) {
     let node = &nodes[idx];
 
@@ -1329,7 +1360,7 @@ fn render_tree(
     {
         // Ignored node -- still render children
         for &child in &node.children {
-            render_tree(nodes, child, indent, output, options);
+            render_tree(nodes, child, indent, output, options, uncapped, budget);
         }
         return;
     }
@@ -1345,7 +1376,7 @@ fn render_tree(
     // Skip root WebArea wrapper
     if role == "RootWebArea" || role == "WebArea" {
         for &child in &node.children {
-            render_tree(nodes, child, indent, output, options);
+            render_tree(nodes, child, indent, output, options, uncapped, budget);
         }
         return;
     }
@@ -1353,9 +1384,38 @@ fn render_tree(
     if options.interactive && !node.has_ref {
         // In interactive mode, skip non-interactive but render children
         for &child in &node.children {
-            render_tree(nodes, child, indent, output, options);
+            render_tree(nodes, child, indent, output, options, uncapped, budget);
         }
         return;
+    }
+
+    if options.interactive {
+        // A table cell whose text is exactly its links' text adds nothing over the links.
+        if role == "cell" && !node.children.is_empty() {
+            let squash = |s: &str| s.chars().filter(|c| !c.is_whitespace()).collect::<String>();
+            let all_links = node.children.iter().all(|&c| nodes[c].role == "link");
+            let joined: String = node
+                .children
+                .iter()
+                .map(|&c| squash(&nodes[c].name))
+                .collect();
+            if all_links && joined == squash(&node.name) {
+                for &child in &node.children {
+                    render_tree(nodes, child, indent, output, options, uncapped, budget);
+                }
+                return;
+            }
+        }
+        if node.has_ref && !uncapped {
+            if budget.shown >= INTERACTIVE_ITEM_CAP {
+                budget.omitted += 1;
+                for &child in &node.children {
+                    render_tree(nodes, child, indent, output, options, uncapped, budget);
+                }
+                return;
+            }
+            budget.shown += 1;
+        }
     }
 
     if let Some((input_type, value)) = &node.collapsed_input {
@@ -1376,11 +1436,15 @@ fn render_tree(
     let mut line = format!("{}- {}", prefix, role);
 
     // Use ARIA name if available, only fall back to cursor-interactive textContent in interactive mode since their visible text in child nodes is filtered out
-    let unescaped_display_name = if options.interactive {
-        node.label()
-    } else {
-        node.name.as_str()
-    };
+    let unescaped_display_name =
+        if role == "row" && options.interactive && !node.children.is_empty() {
+            // A row's accessible name repeats all its cells' text, which the cells list again.
+            ""
+        } else if options.interactive {
+            node.label()
+        } else {
+            node.name.as_str()
+        };
     if !unescaped_display_name.is_empty() {
         if let Ok(display_name) =
             serde_json::to_string(&normalize_snapshot_name(unescaped_display_name))
@@ -1453,7 +1517,7 @@ fn render_tree(
     output.push('\n');
 
     for &child in &node.children {
-        render_tree(nodes, child, indent + 1, output, options);
+        render_tree(nodes, child, indent + 1, output, options, uncapped, budget);
     }
 }
 

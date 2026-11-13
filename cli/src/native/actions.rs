@@ -40,6 +40,7 @@ use super::react;
 use super::recording::{self, RecordingState};
 use super::screenshot::{self, ScreenshotOptions};
 use super::snapshot::{self, SnapshotOptions};
+use super::snapshot_find;
 use super::state;
 use super::storage;
 use super::stream::{self, IdleActivity, StreamServer};
@@ -6695,6 +6696,26 @@ async fn handle_snapshot(cmd: &Value, state: &mut DaemonState) -> Result<Value, 
             .and_then(|v| v.as_u64())
             .map(|d| d as usize),
         urls: cmd.get("urls").and_then(|v| v.as_bool()).unwrap_or(false),
+        all: cmd.get("all").and_then(|v| v.as_bool()).unwrap_or(false),
+    };
+    let find = cmd
+        .get("find")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let hidden_text = cmd
+        .get("hiddenText")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if (find.is_some() || hidden_text) && cmd.get("delta").and_then(Value::as_bool).unwrap_or(false)
+    {
+        return Err("--find and --hidden-text cannot be combined with --delta".to_string());
+    }
+    // find searches the whole tree, so the interactive item cap must not hide a match
+    let options = SnapshotOptions {
+        all: options.all || find.is_some(),
+        ..options
     };
 
     let previous_refs = state.ref_map.ref_ids();
@@ -6710,6 +6731,28 @@ async fn handle_snapshot(cmd: &Value, state: &mut DaemonState) -> Result<Value, 
     .await?;
 
     let url = mgr.get_url().await.unwrap_or_default();
+
+    let tree = if find.is_some() || hidden_text {
+        let mut out = match &find {
+            Some(f) => snapshot_find::find_in_tree(&tree, f, snapshot_find::FIND_MATCH_LIMIT),
+            None => tree,
+        };
+        if hidden_text {
+            let raw = mgr
+                .evaluate(
+                    &snapshot_find::hidden_text_script(options.selector.as_deref()),
+                    None,
+                )
+                .await?;
+            let parsed: Value =
+                serde_json::from_str(raw.as_str().unwrap_or("{}")).unwrap_or(Value::Null);
+            out.push_str("\n\n");
+            out.push_str(&snapshot_find::render_hidden_text(&parsed, find.as_deref()));
+        }
+        out
+    } else {
+        tree
+    };
 
     let refs: serde_json::Map<String, Value> = state
         .ref_map

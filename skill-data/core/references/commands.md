@@ -71,6 +71,11 @@ agent-browser snapshot -i         # Interactive elements only (recommended)
 agent-browser snapshot -c         # Compact output
 agent-browser snapshot -d 3       # Limit depth to 3
 agent-browser snapshot -s "#main" # Scope to CSS selector
+agent-browser snapshot -i --all   # List every interactive item (the default lists the first 300 and counts the rest)
+agent-browser snapshot --find "shipping"  # Only lines whose role or name contains the text, with their ancestors;
+                                  # the first line says whether nothing matched or the list was cut
+agent-browser snapshot --hidden-text      # Also the text a snapshot omits (closed <details>, hidden, display:none),
+                                  # labelled by container; with --find, only the pieces that match
 agent-browser snapshot --delta     # Full state once, then bounded structural deltas
 agent-browser snapshot --delta --full # Force full state and refresh baseline
 ```

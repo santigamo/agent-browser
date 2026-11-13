@@ -2852,6 +2852,12 @@ Options:
   -c, --compact        Remove empty structural elements
   -d, --depth <n>      Limit tree depth
   -s, --selector <sel> Scope snapshot to CSS selector
+      --all            With -i, list every interactive item (the default lists the first 300
+                       and says how many more there are)
+      --find <text>    Only lines whose role or name contains text, with their ancestors;
+                       says whether nothing matched or the list was cut
+      --hidden-text    Also print text a snapshot omits (closed <details>, hidden,
+                       display:none), labelled by container; with --find, only matches
       --delta          Return full state once, then unchanged or structural deltas
                        Deltas include ref changes and an exact treeChange line splice
       --full           Force full state and update the delta baseline

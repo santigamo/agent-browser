@@ -17539,3 +17539,107 @@ async fn e2e_open_with_an_explicit_load_wait_stays_strict() {
     );
     server.abort();
 }
+
+// ---------------------------------------------------------------------------
+// snapshot --find, --hidden-text and the interactive item cap
+// ---------------------------------------------------------------------------
+
+async fn snapshot_text(state: &mut DaemonState, extra: Value) -> String {
+    let mut cmd = json!({ "id": "snap", "action": "snapshot" });
+    for (k, v) in extra.as_object().unwrap() {
+        cmd[k] = v.clone();
+    }
+    let resp = execute_command(&cmd, state).await;
+    assert_success(&resp);
+    get_data(&resp)["snapshot"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_snapshot_interactive_lists_the_first_300_items_and_all_lifts_the_cap() {
+    let links: String = (0..320)
+        .map(|i| format!("<li><a href=\"#n{i}\">Entry {i}</a></li>"))
+        .collect();
+    let mut state = DaemonState::new();
+    open_data_page(&mut state, &format!("<!doctype html><ul>{links}</ul>")).await;
+    let capped = snapshot_text(&mut state, json!({ "interactive": true })).await;
+    assert!(
+        capped.contains("Entry 299") && !capped.contains("Entry 300\""),
+        "{capped}"
+    );
+    assert!(
+        capped.contains("[20 more interactive items not shown; use -s <selector> to scope the snapshot or --all to list everything]"),
+        "{}",
+        &capped[capped.len().saturating_sub(200)..]
+    );
+    let all = snapshot_text(&mut state, json!({ "interactive": true, "all": true })).await;
+    assert!(all.contains("Entry 319") && !all.contains("more interactive items not shown"));
+    let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_snapshot_find_and_hidden_text() {
+    let html = r#"<!doctype html><meta charset="utf-8"><main><h1>Store</h1><p>Open daily</p>
+<details><summary>Shipping rules</summary><p>Orders above the threshold ship free.</p></details>
+<div hidden>Template promo text</div><div style="display:none">Offscreen İstanbul note</div>
+<my-box></my-box></main><script>
+customElements.define('my-box', class extends HTMLElement { constructor() { super();
+  this.attachShadow({ mode: 'open' }).innerHTML = '<details><summary>Shadow tips</summary><p>Tip hidden in a shadow root.</p></details>'; } });
+</script>"#;
+    let mut state = DaemonState::new();
+    open_data_page(&mut state, html).await;
+    let found = snapshot_text(&mut state, json!({ "find": "open daily" })).await;
+    assert!(found.starts_with("find \"open daily\": 1 match"), "{found}");
+    let none = snapshot_text(&mut state, json!({ "find": "threshold" })).await;
+    assert!(
+        none.contains("no match in") && none.contains("--hidden-text"),
+        "{none}"
+    );
+    let hidden = snapshot_text(&mut state, json!({ "hiddenText": true })).await;
+    assert!(
+        hidden.contains(
+            "<details \"Shipping rules\"> (closed)] Orders above the threshold ship free."
+        ),
+        "{hidden}"
+    );
+    assert!(
+        hidden.contains("(hidden attribute)] Template promo text"),
+        "{hidden}"
+    );
+    assert!(
+        hidden.contains("(display:none)] Offscreen İstanbul note"),
+        "{hidden}"
+    );
+    assert!(hidden.contains("Tip hidden in a shadow root."), "{hidden}");
+    // a find over the hidden text only prints the pieces that match, and does not panic on a
+    // character whose lowercase form has another length
+    let only = snapshot_text(
+        &mut state,
+        json!({ "hiddenText": true, "find": "İSTANBUL" }),
+    )
+    .await;
+    assert!(
+        only.contains("hidden text matching \"İSTANBUL\": 1 piece")
+            && !only.contains("Template promo"),
+        "{only}"
+    );
+    let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_interactive_snapshot_does_not_repeat_link_text_in_rows_and_cells() {
+    let html = r##"<!doctype html><table><tbody>
+<tr><td><a href="#a">Alpha item</a></td><td>12</td></tr>
+<tr><td><a href="#b">Beta item</a></td><td>34</td></tr></tbody></table>"##;
+    let mut state = DaemonState::new();
+    open_data_page(&mut state, html).await;
+    let snap = snapshot_text(&mut state, json!({ "interactive": true })).await;
+    // each link appears once; the row's accessible name (all its text) and the cell that only
+    // wraps a link are not printed again
+    assert_eq!(snap.matches("Alpha item").count(), 1, "{snap}");
+    assert!(snap.contains("link \"Beta item\""), "{snap}");
+    assert!(!snap.contains("row \"Alpha item"), "{snap}");
+    let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+}

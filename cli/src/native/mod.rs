@@ -41,6 +41,8 @@ pub mod screenshot;
 #[allow(dead_code)]
 pub mod snapshot;
 #[allow(dead_code)]
+pub mod snapshot_find;
+#[allow(dead_code)]
 pub mod state;
 #[allow(dead_code)]
 pub mod storage;
