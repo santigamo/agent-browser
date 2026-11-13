@@ -1231,6 +1231,50 @@ pub fn send_command(cmd: Value, session: &str) -> Result<Response, String> {
     send_with_retry(is_read_only(&cmd), || send_command_once(&cmd, session))
 }
 
+// Hard stop for every request this thread sends, set by `agent-browser run` for the life of a
+// script: a native call can then not outlive the script's time budget, and nothing is retried past
+// it. Per thread, because `run` drives the daemon from the thread that runs the script.
+thread_local! {
+    static DEADLINE: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
+}
+
+/// Sets the thread's request deadline until dropped.
+#[cfg_attr(not(feature = "codemode"), allow(dead_code))]
+pub(crate) struct DeadlineGuard;
+
+impl DeadlineGuard {
+    #[cfg_attr(not(feature = "codemode"), allow(dead_code))]
+    pub(crate) fn set(deadline: Instant) -> Self {
+        DEADLINE.with(|d| d.set(Some(deadline)));
+        DeadlineGuard
+    }
+}
+
+impl Drop for DeadlineGuard {
+    fn drop(&mut self) {
+        DEADLINE.with(|d| d.set(None));
+    }
+}
+
+/// True once the thread's request deadline has passed.
+pub(crate) fn deadline_passed() -> bool {
+    DEADLINE
+        .with(|d| d.get())
+        .is_some_and(|d| Instant::now() >= d)
+}
+
+/// The socket read timeout, shortened to the time left before `deadline` (plus 500 ms so the
+/// daemon's own operation timeout, which `run` also clamps, normally reports first). Never below
+/// 1 ms.
+pub(crate) fn cap_to_deadline(base: Duration, deadline: Option<Instant>, now: Instant) -> Duration {
+    match deadline {
+        None => base,
+        Some(d) => base
+            .min(d.saturating_duration_since(now) + Duration::from_millis(500))
+            .max(Duration::from_millis(1)),
+    }
+}
+
 /// Retry transient errors (EAGAIN/EWOULDBLOCK/connection issues). Once a
 /// request was written, only read-only actions are re-sent; a mutating one
 /// (click, fill, eval, navigation) could otherwise run twice, so it fails with
@@ -1246,6 +1290,12 @@ fn send_with_retry(
 
     for attempt in 0..MAX_RETRIES {
         if attempt > 0 {
+            // A script's deadline is hard: past it, nothing is retried, not even a read.
+            if deadline_passed() {
+                return Err(format!(
+                    "{last_error} (not retried: the script's time is up)"
+                ));
+            }
             thread::sleep(Duration::from_millis(RETRY_DELAY_MS * (attempt as u64)));
         }
 
@@ -1332,6 +1382,14 @@ fn has_os_error(error: &str, code: u32) -> bool {
 /// the extended budget, and that field is set client-side per invocation,
 /// avoiding the daemon's spawn-time env snapshot drifting from the client.
 pub(crate) fn read_timeout_for(cmd: &Value) -> Duration {
+    cap_to_deadline(
+        read_timeout_uncapped(cmd),
+        DEADLINE.with(|d| d.get()),
+        Instant::now(),
+    )
+}
+
+fn read_timeout_uncapped(cmd: &Value) -> Duration {
     let mut op_ms = cmd.get("timeout").and_then(|v| v.as_u64()).unwrap_or(0);
     if cmd.get("action").and_then(Value::as_str) == Some("mousemove") {
         op_ms = op_ms.max(cmd.get("duration").and_then(Value::as_u64).unwrap_or(0));
@@ -1592,6 +1650,46 @@ mod tests {
         assert!(!is_read_only(&json!({"action": "evaluate"})));
         assert!(!is_read_only(&json!({"action": "some_future_action"})));
         assert!(!is_read_only(&json!({})));
+    }
+
+    #[test]
+    fn socket_read_timeout_is_cut_to_the_script_deadline() {
+        let now = Instant::now();
+        let base = Duration::from_secs(30);
+        assert_eq!(cap_to_deadline(base, None, now), base);
+        assert_eq!(
+            cap_to_deadline(base, Some(now + Duration::from_secs(2)), now),
+            Duration::from_millis(2500)
+        );
+        assert_eq!(
+            cap_to_deadline(base, Some(now), now),
+            Duration::from_millis(500)
+        );
+        // a long budget is not extended
+        assert_eq!(
+            cap_to_deadline(
+                Duration::from_secs(1),
+                Some(now + Duration::from_secs(60)),
+                now
+            ),
+            Duration::from_secs(1)
+        );
+    }
+
+    #[test]
+    fn nothing_is_retried_once_the_script_deadline_has_passed() {
+        let calls = std::cell::Cell::new(0);
+        let _guard = DeadlineGuard::set(Instant::now() - Duration::from_millis(1));
+        let result = send_with_retry(true, || {
+            calls.set(calls.get() + 1);
+            Err(SendError::NotSent(
+                "Resource temporarily unavailable (os error 35)".into(),
+            ))
+        });
+        assert_eq!(calls.get(), 1, "a read is not re-sent past the deadline");
+        assert!(matches!(result, Err(ref e) if e.contains("not retried")));
+        drop(_guard);
+        assert!(!deadline_passed());
     }
 
     #[test]

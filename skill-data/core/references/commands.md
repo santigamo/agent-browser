@@ -412,6 +412,24 @@ Array.from(links).map(a => a.href);
 EOF
 ```
 
+## Code mode (run)
+
+`agent-browser run <file.js|->` runs a JavaScript script of many steps in one call, so a multi-page task needs one tool call instead of one per step. Each `page.*` call is an ordinary command (same parser, daemon, refs, `--allowed-domains` and action policies); calls are synchronous, `await` is optional, and only the script's return value (after any `console.log` lines) is printed.
+
+```bash
+agent-browser run - <<'JS'
+page.goto("https://example.com/search");
+page.fill("input[name=q]", "shoes");
+page.press("Enter");
+page.waitFor({ url: "**/results*" });
+return page.evaluate(() => [...document.querySelectorAll("h2 a")].map(a => a.textContent));
+JS
+```
+
+The API: `page.goto(url)`, `back()`, `reload()`, `click(t)`, `fill(t, v)`, `type(t, v)`, `select(t, ...v)`, `check(t)`, `uncheck(t)`, `hover(t)`, `focus(t)`, `dblclick(t)`, `press(key)`, `scroll(dir, px)`, `text(t)`, `value(t)`, `attr(t, name)`, `html(t)`, `count(t)`, `isVisible(t)`, `url()`, `title()`, `waitFor("css" | {text} | {url} | {load: true} | {fn} | ms)`, `evaluate(fn, ...args)`, `snapshot({interactive, compact, urls, depth, selector, find, hidden, all})`, `cmd("any command line")` and `sleep(ms)`. Targets are CSS selectors or `@refs`. A CSS target that is not in the DOM yet is waited for up to 5 s, then the step is retried once.
+
+A failing step stops the script with `step N: page.<call>(<args>) failed: <reason> (script line L)`, plus the page URL, its title and the interactive elements nearest to the target; earlier steps have already run, and the exit status is 1. A step that an action policy or `--confirm-actions` holds for confirmation fails and names the confirm id; nothing ran. `AGENT_BROWSER_RUN_TIMEOUT_MS` bounds the whole script (default 120000), and the bound is hard: sleeps, command timeouts, socket reads and retries all stop at it. The returned text honors `--max-output` (head and tail kept), `--offset` and `--content-boundaries`; `--json` prints `{success, data, error}` with the text in `data.output`. `run` needs a build with the `codemode` cargo feature, which is on by default.
+
 ## Authentication and Plugins
 
 ```bash

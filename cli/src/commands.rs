@@ -158,6 +158,7 @@ pub fn is_top_level_command(value: &str) -> bool {
             | "device"
             | "diff"
             | "batch"
+            | "run"
             | "react"
             | "vitals"
             | "web-vitals"
@@ -2172,6 +2173,18 @@ fn parse_command_inner(
 
         "diff" => parse_diff(&rest, &id),
 
+        // === Code mode: run a JS script of many steps in one call ===
+        "run" => {
+            let file = rest.iter().find(|a| !a.starts_with("--")).copied();
+            let Some(file) = file else {
+                return Err(ParseError::MissingArguments {
+                    context: "run".to_string(),
+                    usage: "run <script.js|->",
+                });
+            };
+            Ok(json!({ "id": id, "action": "run", "file": file }))
+        }
+
         // === Batch ===
         "batch" => {
             // Stop at the first failing command unless --keep-going is given: later commands
@@ -4006,10 +4019,10 @@ pub fn shell_words_split(s: &str) -> Vec<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    fn default_flags() -> Flags {
+    pub(crate) fn default_flags() -> Flags {
         Flags {
             session: "test".to_string(),
             session_source: "--session",
@@ -5625,6 +5638,16 @@ mod tests {
         assert!(
             parse_command(&args("open https://a.test --wait-until"), &default_flags()).is_err()
         );
+    }
+
+    #[test]
+    fn test_run_takes_a_script_file_or_stdin() {
+        let cmd = parse_command(&args("run script.js"), &default_flags()).unwrap();
+        assert_eq!(cmd["action"], "run");
+        assert_eq!(cmd["file"], "script.js");
+        let cmd = parse_command(&args("run -"), &default_flags()).unwrap();
+        assert_eq!(cmd["file"], "-");
+        assert!(parse_command(&args("run"), &default_flags()).is_err());
     }
 
     #[test]

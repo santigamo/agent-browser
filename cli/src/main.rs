@@ -1,6 +1,8 @@
 mod browser_security;
 mod ca_bundle;
 mod chat;
+#[cfg(feature = "codemode")]
+mod codemode;
 mod color;
 mod commands;
 mod connection;
@@ -155,7 +157,7 @@ fn batch_item_settings(
 /// denied by policy or parked for confirmation never reaches the launch, so it
 /// reports none and the next command carries the relaunch. `confirm` replays
 /// the parked command and nests that command's response under `result`.
-fn response_applied_relaunch(resp: &connection::Response) -> bool {
+pub(crate) fn response_applied_relaunch(resp: &connection::Response) -> bool {
     let Some(data) = resp.data.as_ref() else {
         return false;
     };
@@ -1245,7 +1247,7 @@ fn run_dashboard_stop(json_mode: bool) {
 /// its stored security settings. Called only after the daemon confirmed the
 /// close, so a close that policy denied or a confirmation parked leaves the
 /// session contained.
-fn clear_closed_session(session: &str) {
+pub(crate) fn clear_closed_session(session: &str) {
     tls::clear_session(session);
     if let Err(e) = session_settings::clear_file(session) {
         eprintln!("{} {}", color::warning_indicator(), e);
@@ -1279,7 +1281,7 @@ fn ensure_daemon_for(
 
 /// Whether a response says the browser was closed, as opposed to denied,
 /// parked for confirmation or failed.
-fn close_completed(resp: &connection::Response) -> bool {
+pub(crate) fn close_completed(resp: &connection::Response) -> bool {
     resp.success
         && resp
             .data
@@ -1928,6 +1930,13 @@ fn main() {
         cmd["settle"] = json!(true);
     }
 
+    // Code mode: a JS script whose page.* calls go through the same command pipeline (and daemon
+    // policy) as batch items.
+    if cmd.get("action").and_then(|v| v.as_str()) == Some("run") {
+        let file = cmd.get("file").and_then(|v| v.as_str()).unwrap_or("-");
+        exit(run_script_command(&flags, &daemon_opts, file));
+    }
+
     // Handle batch command: from args or stdin
     if cmd.get("action").and_then(|v| v.as_str()) == Some("batch") {
         let bail = cmd.get("bail").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -2016,17 +2025,20 @@ fn main() {
 /// longer pays a settle-sleep on every invocation, so a daemon that exited
 /// right after its liveness check surfaces as an unreachable socket on the
 /// request itself. Respawn once and retry before reporting failure.
-fn send_command_with_respawn(
+pub(crate) fn send_command_with_respawn(
     cmd: serde_json::Value,
     session: &str,
     daemon_opts: &DaemonOptions,
 ) -> Result<connection::Response, String> {
     let first_attempt = send_command(cmd.clone(), session);
     match first_attempt {
-        Err(ref e) if daemon_unreachable(e) => match ensure_daemon(session, daemon_opts) {
-            Ok(_) => send_command(cmd, session),
-            Err(_) => first_attempt,
-        },
+        // Past a script's deadline nothing is respawned or retried.
+        Err(ref e) if daemon_unreachable(e) && !connection::deadline_passed() => {
+            match ensure_daemon(session, daemon_opts) {
+                Ok(_) => send_command(cmd, session),
+                Err(_) => first_attempt,
+            }
+        }
         other => other,
     }
 }
@@ -2237,10 +2249,28 @@ fn run_batch(
     }
 }
 
+/// `agent-browser run <file|->`, or the error when this build has no code mode.
+#[cfg(feature = "codemode")]
+fn run_script_command(flags: &Flags, daemon_opts: &DaemonOptions, file: &str) -> i32 {
+    codemode::run_file(flags, daemon_opts, file)
+}
+
+#[cfg(not(feature = "codemode"))]
+fn run_script_command(flags: &Flags, _daemon_opts: &DaemonOptions, _file: &str) -> i32 {
+    let message =
+        "this build of agent-browser has no code mode (built without the `codemode` feature)";
+    if flags.json {
+        print_json_error(message);
+    } else {
+        eprintln!("{} {}", color::error_indicator(), message);
+    }
+    1
+}
+
 /// Parses one batch item and attaches everything the daemon needs: input mode, plugins, restore
 /// config, launch settings and tab pinning. Returns the wire command and its action name, or the
 /// parse error text.
-fn build_batch_command(
+pub(crate) fn build_batch_command(
     flags: &Flags,
     args: &[String],
     relaunch_applied: bool,

@@ -104,8 +104,13 @@ pub fn cap_text(content: &str, limit: Option<usize>, offset: usize) -> String {
     out
 }
 
-/// Like `print_with_boundaries` for page text: applies the head and tail cap first.
-fn print_capped_text(content: &str, origin: Option<&str>, opts: &OutputOptions) {
+/// Page text as the CLI prints it: capped (head and tail, `--offset`) and, with
+/// `--content-boundaries`, wrapped in the page-content markers.
+pub(crate) fn finalize_page_text(
+    content: &str,
+    origin: Option<&str>,
+    opts: &OutputOptions,
+) -> String {
     let capped = cap_text(
         content,
         text_limit(opts, std::io::IsTerminal::is_terminal(&std::io::stdout())),
@@ -117,7 +122,16 @@ fn print_capped_text(content: &str, origin: Option<&str>, opts: &OutputOptions) 
         max_output: None,
         offset: 0,
     };
-    print_with_boundaries(&capped, origin, &inner);
+    format_with_boundaries(&capped, origin, &inner)
+}
+
+/// Like `print_with_boundaries` for page text: applies the head and tail cap first.
+fn print_capped_text(content: &str, origin: Option<&str>, opts: &OutputOptions) {
+    let content = finalize_page_text(content, origin, opts);
+    print!("{}", content);
+    if !content.ends_with('\n') {
+        println!();
+    }
 }
 
 fn truncate_if_needed(content: &str, max: Option<usize>) -> String {
@@ -4175,6 +4189,52 @@ Examples:
 "##
         }
 
+        "run" => {
+            r##"
+agent-browser run - Run a multi-step JavaScript script in one call (code mode)
+
+Usage: agent-browser run <file.js>
+       agent-browser run - <<'JS' ... JS
+
+Each page.* call is an ordinary command (same parser, daemon, refs and
+policies). Calls are synchronous; await is optional. Only the script's return
+value (after any console.log lines) is printed.
+
+  page.goto(url) back() reload()          navigate, return the new URL
+  page.click(t) fill(t, v) type(t, v) select(t, ...v) check(t) uncheck(t)
+       hover(t) focus(t) dblclick(t) press(key) scroll(dir, px)
+  page.text(t) value(t) attr(t, name) html(t) count(t) isVisible(t)
+       url() title()
+  page.waitFor("css" | {text} | {url} | {load: true} | {fn} | ms)
+  page.evaluate(fn, ...args)              run fn in the page, args as JSON
+  page.snapshot({interactive: true})      snapshot text with refs
+  page.cmd("any command line")            e.g. find label "Email" fill "a@b.c"
+  sleep(ms)
+
+Targets are CSS selectors or @refs. A CSS target that is not in the DOM yet is
+waited for up to 5s, then the step is retried once. A failing step stops the
+script: "step N: page.<call>(<args>) failed: <reason> (script line L)", where
+N counts page.* calls; earlier steps have already run. A step the daemon holds
+for confirmation (an action policy or --confirm-actions) fails and names the
+confirm id; nothing ran. Exit status 1 on failure.
+
+AGENT_BROWSER_RUN_TIMEOUT_MS bounds the whole script (default 120000). The
+bound is hard: sleeps, command timeouts, socket reads and retries all stop at it.
+
+The returned text honors --max-output (head and tail kept), --offset and
+--content-boundaries like any page text; --json prints {success, data, error}
+with the text in data.output.
+
+Example:
+  agent-browser run - <<'JS'
+  page.goto("https://example.com/search");
+  page.fill("input[name=q]", "shoes");
+  page.press("Enter");
+  page.waitFor({ url: "**/results*" });
+  return page.evaluate(() => [...document.querySelectorAll("h2 a")].map(a => a.textContent));
+  JS
+"##
+        }
         "batch" => {
             r##"
 agent-browser batch - Execute multiple commands sequentially
@@ -4690,9 +4750,11 @@ SPA:
 Init scripts:
   removeinitscript <id>      Remove a registered script from every tab in the session
 
-Batch:
+Batch and scripts:
   batch [options] ["cmd" ...] Execute multiple commands sequentially (args or stdin)
                               stops at the first error; --keep-going runs them all
+  run <file.js|->             Run a JavaScript script of page.* steps in one call;
+                              prints only what it returns (see run --help)
                               --omit-command uses a zero-based `index` field with --json
 
 Auth Vault:
