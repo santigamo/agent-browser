@@ -17680,3 +17680,108 @@ async fn e2e_click_with_settle_waits_for_the_navigation_it_started() {
     let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
     server.abort();
 }
+
+// ---------------------------------------------------------------------------
+// wait fail-fast
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore]
+async fn e2e_wait_fails_fast_on_a_settled_page_but_not_with_a_chosen_timeout_or_a_request_in_flight(
+) {
+    let (port, server) = fixture_server(vec![
+        (
+            "/late",
+            page("<div id=\"root\">loading</div><script>setTimeout(() => { const d = document.createElement('div'); d.id = 'late-item'; d.textContent = 'here'; document.body.appendChild(d); }, 2000)</script>"),
+        ),
+        ("/empty", page("<h1>Nothing here</h1>")),
+        // a request that never finishes keeps the page "talking"
+        ("/busy", page("<h1>Busy</h1><script>fetch('/hang.json')</script>")),
+        ("/hang.json", Route::Hang),
+    ])
+    .await;
+    let mut state = DaemonState::new();
+    let base = format!("http://127.0.0.1:{port}");
+    launch_and_open(&mut state, &format!("{base}/late")).await;
+    // an element that appears after 2 s is still found with fail-fast on
+    assert_success(
+        &execute_command(
+            &json!({ "id": "1", "action": "wait", "selector": "#late-item", "failFast": true, "timeout": 10000 }),
+            &mut state,
+        )
+        .await,
+    );
+    assert_success(
+        &execute_command(
+            &json!({ "id": "2", "action": "navigate", "url": format!("{base}/empty") }),
+            &mut state,
+        )
+        .await,
+    );
+    // an absent selector on a settled page fails after about 3 s instead of the ceiling
+    let start = std::time::Instant::now();
+    let resp = execute_command(
+        &json!({ "id": "3", "action": "wait", "selector": "#nope", "failFast": true, "timeout": 10000 }),
+        &mut state,
+    )
+    .await;
+    let took = start.elapsed();
+    assert_eq!(resp["success"], false, "{resp}");
+    let error = resp["error"].as_str().unwrap_or("");
+    assert!(
+        error.contains("no match is visible") && error.contains("Wait timed out"),
+        "{resp}"
+    );
+    assert!(
+        took >= std::time::Duration::from_secs(3) && took < std::time::Duration::from_secs(7),
+        "{took:?}"
+    );
+    // text waits follow the same rule
+    let start = std::time::Instant::now();
+    let resp = execute_command(
+        &json!({ "id": "4", "action": "wait", "text": "never on this page", "failFast": true, "timeout": 10000 }),
+        &mut state,
+    )
+    .await;
+    assert_eq!(resp["success"], false, "{resp}");
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(7),
+        "{:?}",
+        start.elapsed()
+    );
+    // a timeout the caller chose is waited out in full (no failFast flag reaches the daemon)
+    let start = std::time::Instant::now();
+    let resp = execute_command(
+        &json!({ "id": "5", "action": "wait", "selector": "#nope", "timeout": 5000 }),
+        &mut state,
+    )
+    .await;
+    assert_eq!(resp["success"], false, "{resp}");
+    assert!(
+        start.elapsed() >= std::time::Duration::from_millis(4900),
+        "{:?}",
+        start.elapsed()
+    );
+    // a request still in flight keeps the wait going to the ceiling
+    assert_success(
+        &execute_command(
+            &json!({ "id": "6", "action": "navigate", "url": format!("{base}/busy") }),
+            &mut state,
+        )
+        .await,
+    );
+    let start = std::time::Instant::now();
+    let resp = execute_command(
+        &json!({ "id": "7", "action": "wait", "selector": "#nope", "failFast": true, "timeout": 6000 }),
+        &mut state,
+    )
+    .await;
+    assert_eq!(resp["success"], false, "{resp}");
+    assert!(
+        start.elapsed() >= std::time::Duration::from_millis(5800),
+        "failed fast at {:?} with a request in flight: {resp}",
+        start.elapsed()
+    );
+    let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+    server.abort();
+}

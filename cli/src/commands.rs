@@ -774,6 +774,29 @@ fn parse_command_inner(
                 })?);
                 rest.drain(idx..=idx + 1);
             }
+            // `--soft-timeout <ms>`: a ceiling the caller did not choose. Like a missing --timeout it
+            // lets a selector or text wait fail early on a settled page; an explicit --timeout, or a
+            // default timeout set with AGENT_BROWSER_DEFAULT_TIMEOUT or the config file, never does.
+            let mut soft_timeout = false;
+            if let Some(idx) = rest.iter().position(|&s| s == "--soft-timeout") {
+                let raw = rest
+                    .get(idx + 1)
+                    .ok_or_else(|| ParseError::MissingArguments {
+                        context: "wait --soft-timeout".to_string(),
+                        usage: "wait <selector> [--soft-timeout <ms>]",
+                    })?;
+                timeout_ms = timeout_ms.or(Some(raw.parse::<u64>().map_err(|_| {
+                    ParseError::InvalidValue {
+                        message: format!("--soft-timeout expects a number in ms, got '{}'", raw),
+                        usage: "wait <selector> [--soft-timeout <ms>]",
+                    }
+                })?));
+                soft_timeout = true;
+                rest.drain(idx..=idx + 1);
+            }
+            let caller_chose_timeout =
+                (timeout_ms.is_some() && !soft_timeout) || flags.default_timeout.is_some();
+            let fail_fast = !caller_chose_timeout && !crate::fork::restores("wait-fail-fast");
             let mut element_state: Option<&str> = None;
             if let Some(idx) = rest.iter().position(|&s| s == "--state") {
                 let raw = rest
@@ -819,6 +842,13 @@ fn parse_command_inner(
             let with_timeout = |mut cmd: Value| {
                 if let Some(ms) = timeout_ms {
                     cmd["timeout"] = json!(ms);
+                }
+                cmd
+            };
+            // A text or selector wait with no timeout of the caller's own fails early on a settled page.
+            let fail_fast_if_free = |mut cmd: Value| {
+                if fail_fast {
+                    cmd["failFast"] = json!(true);
                 }
                 cmd
             };
@@ -870,9 +900,9 @@ fn parse_command_inner(
                         context: "wait --text".to_string(),
                         usage: "wait --text <text>",
                     })?;
-                return Ok(with_timeout(
+                return Ok(fail_fast_if_free(with_timeout(
                     json!({ "id": id, "action": "wait", "text": text }),
-                ));
+                )));
             }
 
             // Check for --download flag: wait --download [path]
@@ -900,7 +930,7 @@ fn parse_command_inner(
                     if let Some(state) = element_state {
                         cmd["state"] = json!(state);
                     }
-                    Ok(with_timeout(cmd))
+                    Ok(fail_fast_if_free(with_timeout(cmd)))
                 }
             } else {
                 Err(ParseError::MissingArguments {
@@ -5507,6 +5537,38 @@ mod tests {
         assert_eq!(cmd["action"], "snapshot");
         assert_eq!(cmd["interactive"], true);
         assert_eq!(cmd["cursor"], true);
+    }
+
+    #[test]
+    fn test_wait_fails_fast_unless_the_caller_chose_a_timeout() {
+        let cmd = parse_command(&args("wait #a"), &default_flags()).unwrap();
+        assert_eq!(cmd["failFast"], true);
+        assert!(cmd.get("timeout").is_none());
+        // a ceiling the caller did not choose still fails fast
+        let cmd = parse_command(&args("wait #a --soft-timeout 10000"), &default_flags()).unwrap();
+        assert_eq!(cmd["failFast"], true);
+        assert_eq!(cmd["timeout"], 10000);
+        // an explicit timeout always wins
+        let cmd = parse_command(&args("wait #a --timeout 8000"), &default_flags()).unwrap();
+        assert!(cmd.get("failFast").is_none());
+        assert_eq!(cmd["timeout"], 8000);
+        // so does a default timeout from AGENT_BROWSER_DEFAULT_TIMEOUT or the config file
+        let mut flags = default_flags();
+        flags.default_timeout = Some(20_000);
+        let cmd = parse_command(&args("wait #a"), &flags).unwrap();
+        assert!(cmd.get("failFast").is_none());
+        let cmd = parse_command(&args("wait --text hello"), &flags).unwrap();
+        assert!(cmd.get("failFast").is_none());
+        // a text wait follows the same rule
+        let cmd = parse_command(&args("wait --text hello"), &default_flags()).unwrap();
+        assert_eq!(cmd["failFast"], true);
+        let cmd =
+            parse_command(&args("wait --text hello --timeout 9000"), &default_flags()).unwrap();
+        assert!(cmd.get("failFast").is_none());
+        // other wait kinds are untouched
+        let cmd = parse_command(&args("wait --fn true"), &default_flags()).unwrap();
+        assert!(cmd.get("failFast").is_none());
+        assert!(parse_command(&args("wait #a --soft-timeout abc"), &default_flags()).is_err());
     }
 
     #[test]

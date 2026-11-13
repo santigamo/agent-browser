@@ -2738,6 +2738,11 @@ Selector Wait Options:
 
 A load-state wait uses --timeout (or AGENT_BROWSER_DEFAULT_TIMEOUT) and fails when it expires.
 
+A selector or text wait with no timeout of your own (no --timeout, no AGENT_BROWSER_DEFAULT_TIMEOUT or
+config default timeout) gives up early when waiting longer is pointless: the document is complete,
+unchanged for 1 s, no network request is in flight, and 3 s have passed. The error says so. Any timeout
+you choose is waited out in full. --soft-timeout <ms> sets a ceiling that still fails early.
+
 Download Options (with --download):
   --timeout <ms>       Timeout in milliseconds for download to start
 

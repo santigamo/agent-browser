@@ -629,6 +629,9 @@ pub struct DaemonState {
     pub routes: Arc<RwLock<Vec<RouteEntry>>>,
     pub tracked_requests: Vec<TrackedRequest>,
     pub request_tracking: bool,
+    /// Ids of the active page's network requests that started and have not finished, kept by
+    /// the event drain so a fail-fast wait knows about requests that began before it did.
+    pub inflight_requests: std::collections::HashSet<String>,
     pub active_frame_id: Option<String>,
     /// Cross-origin iframe frame_id → dedicated CDP session_id.
     /// Populated by Target.attachedToTarget events from Target.setAutoAttach.
@@ -834,6 +837,7 @@ impl DaemonState {
             routes: Arc::new(RwLock::new(Vec::new())),
             tracked_requests: Vec::new(),
             request_tracking: false,
+            inflight_requests: std::collections::HashSet::new(),
             active_frame_id: None,
             iframe_sessions: HashMap::new(),
             active_iframe_sessions: HashSet::new(),
@@ -1935,6 +1939,21 @@ impl DaemonState {
 
                     if !session_matches && !iframe_network_event && !webmcp_event {
                         continue;
+                    }
+
+                    if session_matches {
+                        let request_id = event.params.get("requestId").and_then(Value::as_str);
+                        match (event.method.as_str(), request_id) {
+                            ("Network.requestWillBeSent", Some(id))
+                                if self.inflight_requests.len() < MAX_TRACKED_INFLIGHT =>
+                            {
+                                self.inflight_requests.insert(id.to_string());
+                            }
+                            ("Network.loadingFinished" | "Network.loadingFailed", Some(id)) => {
+                                self.inflight_requests.remove(id);
+                            }
+                            _ => {}
+                        }
                     }
 
                     match event.method.as_str() {
@@ -7657,12 +7676,39 @@ async fn handle_uncheck(cmd: &Value, state: &mut DaemonState) -> Result<Value, S
 }
 
 async fn handle_wait(cmd: &Value, state: &mut DaemonState) -> Result<Value, String> {
+    let fail_fast = cmd
+        .get("failFast")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    // A fail-fast wait must know which requests are in flight: subscribe first, then let the
+    // daemon read the events it has not seen yet, then start from its set.
+    let in_flight = match (fail_fast, state.browser.as_ref()) {
+        (true, Some(mgr)) => {
+            let rx = mgr.client.subscribe();
+            state.drain_cdp_events_background().await?;
+            Some((rx, state.inflight_requests.clone()))
+        }
+        _ => None,
+    };
     let mgr = state.browser.as_ref().ok_or("Browser not launched")?;
     let session_id = mgr.active_session_id()?.to_string();
     let timeout_ms = state.timeout_ms(cmd);
 
     if let Some(text) = cmd.get("text").and_then(|v| v.as_str()) {
-        wait_for_text(&mgr.client, &session_id, text, timeout_ms).await?;
+        if let Some((rx, pending)) = in_flight {
+            poll_until_true_fail_fast(
+                &mgr.client,
+                &session_id,
+                &super::dom_js::text_check_expr(text),
+                timeout_ms,
+                "the text is not on the page",
+                rx,
+                pending,
+            )
+            .await?;
+        } else {
+            wait_for_text(&mgr.client, &session_id, text, timeout_ms).await?;
+        }
         return Ok(json!({ "waited": "text", "text": text }));
     }
 
@@ -7690,9 +7736,24 @@ async fn handle_wait(cmd: &Value, state: &mut DaemonState) -> Result<Value, Stri
                     .await?
                 }
             },
-            None => {
-                wait_for_selector(&mgr.client, &session_id, selector, state_str, timeout_ms).await?
-            }
+            None => match in_flight {
+                Some((rx, pending)) => {
+                    wait_for_selector_fail_fast(
+                        &mgr.client,
+                        &session_id,
+                        selector,
+                        state_str,
+                        timeout_ms,
+                        rx,
+                        pending,
+                    )
+                    .await?
+                }
+                None => {
+                    wait_for_selector(&mgr.client, &session_id, selector, state_str, timeout_ms)
+                        .await?
+                }
+            },
         }
         return Ok(json!({ "waited": "selector", "selector": selector }));
     }
@@ -7915,6 +7976,153 @@ async fn wait_for_selector(
 ) -> Result<(), String> {
     let check_fn = super::dom_js::state_check_expr("document", selector, state);
     poll_until_true(client, session_id, &check_fn, timeout_ms).await
+}
+
+/// Upper bound on the in-flight request set, so a page that never finishes requests cannot grow it forever.
+const MAX_TRACKED_INFLIGHT: usize = 10_000;
+
+/// How long a selector or text wait with no timeout of the caller's own must have run before it may
+/// give up early.
+const FAIL_FAST_AFTER: std::time::Duration = std::time::Duration::from_secs(3);
+/// How long the page must have been unchanged, with no network request in flight, for a condition
+/// that does not hold to count as never going to hold.
+const FAIL_FAST_STABLE_FOR: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// A wait whose caller chose no timeout fails early when waiting longer is pointless: the document is
+/// complete, nothing on the page has changed for a while, no request is still in flight, and the
+/// condition (a visible match, some text) still does not hold. While the page is loading, mutating
+/// or talking to the network the full budget applies.
+fn wait_should_fail_fast(
+    elapsed: std::time::Duration,
+    ready_complete: bool,
+    stable_for: std::time::Duration,
+    requests_in_flight: usize,
+) -> bool {
+    ready_complete
+        && requests_in_flight == 0
+        && elapsed >= FAIL_FAST_AFTER
+        && stable_for >= FAIL_FAST_STABLE_FOR
+}
+
+/// Keeps the set of network requests that started and have not finished, from the events a wait
+/// subscribed to before it began. A request that was already in flight when the wait started is not
+/// known; it still shows up as page activity (a DOM or text change) once it completes.
+fn track_requests(
+    rx: &mut broadcast::Receiver<CdpEvent>,
+    session_id: &str,
+    pending: &mut std::collections::HashSet<String>,
+) {
+    loop {
+        match rx.try_recv() {
+            Ok(ev) if ev.session_id.as_deref() == Some(session_id) => {
+                let id = ev.params.get("requestId").and_then(Value::as_str);
+                match (ev.method.as_str(), id) {
+                    ("Network.requestWillBeSent", Some(id)) => {
+                        pending.insert(id.to_string());
+                    }
+                    ("Network.loadingFinished" | "Network.loadingFailed", Some(id)) => {
+                        pending.remove(id);
+                    }
+                    _ => {}
+                }
+            }
+            Ok(_) | Err(broadcast::error::TryRecvError::Lagged(_)) => continue,
+            Err(_) => return,
+        }
+    }
+}
+
+/// `poll_until_true` for a caller that chose no timeout: `timeout_ms` is only the ceiling, and the
+/// wait ends early per `wait_should_fail_fast`. `check` is a JS expression that is true once the
+/// wait is satisfied.
+async fn poll_until_true_fail_fast(
+    client: &super::cdp::client::CdpClient,
+    session_id: &str,
+    check: &str,
+    timeout_ms: u64,
+    what: &str,
+    mut rx: broadcast::Receiver<CdpEvent>,
+    mut pending: std::collections::HashSet<String>,
+) -> Result<(), String> {
+    let probe = format!(
+        "(() => {{ const ok = !!({check}); \
+         const sig = document.getElementsByTagName('*').length + ':' + (document.documentElement.textContent || '').length; \
+         return {{ ok, complete: document.readyState === 'complete', sig }}; }})()"
+    );
+    let start = tokio::time::Instant::now();
+    let deadline = start + std::time::Duration::from_millis(timeout_ms);
+    let mut last_sig = String::new();
+    let mut last_change = start;
+    loop {
+        let result: super::cdp::types::EvaluateResult = client
+            .send_command_typed(
+                "Runtime.evaluate",
+                &super::cdp::types::EvaluateParams {
+                    expression: probe.clone(),
+                    return_by_value: Some(true),
+                    await_promise: Some(false),
+                },
+                Some(session_id),
+            )
+            .await?;
+        let v = result.result.value.unwrap_or(Value::Null);
+        if v.get("ok").and_then(|x| x.as_bool()).unwrap_or(false) {
+            return Ok(());
+        }
+        let now = tokio::time::Instant::now();
+        let before = pending.len();
+        track_requests(&mut rx, session_id, &mut pending);
+        let sig = v
+            .get("sig")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_string();
+        // A request that starts or ends counts as the page changing.
+        if sig != last_sig || pending.len() != before {
+            last_sig = sig;
+            last_change = now;
+        }
+        let complete = v.get("complete").and_then(|x| x.as_bool()).unwrap_or(false);
+        if wait_should_fail_fast(now - start, complete, now - last_change, pending.len()) {
+            return Err(format!(
+                "Wait timed out after {}ms: the document is complete, unchanged for {}ms, no request is in flight, and {what} (give wait an explicit time limit to wait longer)",
+                (now - start).as_millis(),
+                (now - last_change).as_millis()
+            ));
+        }
+        if now >= deadline {
+            return Err(format!("Wait timed out after {}ms", timeout_ms));
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+}
+
+/// `wait_for_selector` for a caller that chose no timeout. Only the states where "not satisfied"
+/// means "not yet" (visible, attached) can fail fast; `hidden` and `detached` are already
+/// satisfied by a missing element.
+async fn wait_for_selector_fail_fast(
+    client: &super::cdp::client::CdpClient,
+    session_id: &str,
+    selector: &str,
+    state: &str,
+    timeout_ms: u64,
+    rx: broadcast::Receiver<CdpEvent>,
+    pending: std::collections::HashSet<String>,
+) -> Result<(), String> {
+    if !matches!(state, "visible" | "attached") {
+        return wait_for_selector(client, session_id, selector, state, timeout_ms).await;
+    }
+    let check = super::dom_js::state_check_expr("document", selector, state);
+    poll_until_true_fail_fast(
+        client,
+        session_id,
+        &check,
+        timeout_ms,
+        "no match is visible",
+        rx,
+        pending,
+    )
+    .await
 }
 
 /// How long `wait --url` keeps waiting for the page to finish loading once the URL matched.
@@ -15688,6 +15896,42 @@ fn attach_tab_gone_data(resp: &mut Value, state: &DaemonState) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn wait_without_a_caller_timeout_fails_fast_only_on_a_settled_quiet_page() {
+        use std::time::Duration as D;
+        let s = |n: u64| D::from_secs(n);
+        // complete, quiet for 1 s, 3 s in, nothing in flight, still unsatisfied: give up
+        assert!(wait_should_fail_fast(s(3), true, s(1), 0));
+        assert!(wait_should_fail_fast(s(9), true, s(5), 0));
+        // too early, still loading, still mutating, or a request still in flight: keep waiting
+        assert!(!wait_should_fail_fast(D::from_millis(2_900), true, s(2), 0));
+        assert!(!wait_should_fail_fast(s(10), false, s(5), 0));
+        assert!(!wait_should_fail_fast(s(10), true, D::from_millis(900), 0));
+        assert!(!wait_should_fail_fast(s(10), true, s(5), 1));
+    }
+
+    #[test]
+    fn network_events_keep_the_in_flight_set() {
+        let (tx, mut rx) = broadcast::channel(16);
+        let ev = |method: &str, id: &str, session: &str| CdpEvent {
+            method: method.to_string(),
+            params: json!({ "requestId": id }),
+            session_id: Some(session.to_string()),
+        };
+        let mut pending = std::collections::HashSet::new();
+        tx.send(ev("Network.requestWillBeSent", "a", "s")).unwrap();
+        tx.send(ev("Network.requestWillBeSent", "b", "s")).unwrap();
+        tx.send(ev("Network.requestWillBeSent", "x", "other"))
+            .unwrap();
+        tx.send(ev("Network.loadingFinished", "a", "s")).unwrap();
+        track_requests(&mut rx, "s", &mut pending);
+        assert_eq!(pending.len(), 1);
+        assert!(pending.contains("b"));
+        tx.send(ev("Network.loadingFailed", "b", "s")).unwrap();
+        track_requests(&mut rx, "s", &mut pending);
+        assert!(pending.is_empty());
+    }
+
     /// Serves `Browser.getVersion` on one fixed `ws://` address for any number
     /// of connections and counts the calls.
     async fn version_server() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {

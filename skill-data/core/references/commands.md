@@ -182,6 +182,7 @@ Needs `ffmpeg` on PATH; use a path with an extension. `--fps` accepts 1 to 60 an
 agent-browser wait @e1                     # Wait for element
 agent-browser wait 2000                    # Wait milliseconds
 agent-browser wait --text "Success"        # Wait for text (or -t)
+agent-browser wait "#el" --soft-timeout 10000   # A ceiling that still fails early on a settled page (see below)
 agent-browser wait --url "**/dashboard"    # Wait for URL pattern (or -u), then for the page to finish loading (up to 3 s)
 agent-browser wait --load domcontentloaded # Wait for DOMContentLoaded (or -l)
 agent-browser wait --load load             # Wait for the load event
@@ -194,6 +195,8 @@ For selector waits, `--state` accepts `visible`, `hidden`, `attached`, or `detac
 After a page-changing action, prefer the selector, text, URL, or JavaScript condition that represents the result you need. Use a lifecycle wait when the lifecycle event is the milestone. `networkidle` is also supported, but use it only for pages known to become quiet because SSE, WebSockets, polling, and long-polling can keep it from resolving.
 
 A load-state wait runs for its whole timeout budget, taken from `--timeout` or `AGENT_BROWSER_DEFAULT_TIMEOUT`, and returns an error when it expires.
+
+A selector or text wait with no timeout of your own (no `--timeout`, no `AGENT_BROWSER_DEFAULT_TIMEOUT` or config default timeout) gives up early when waiting longer is pointless: the document is complete, unchanged for 1 s, no network request is in flight, and at least 3 s have passed. The error says so. A timeout you choose is always waited out in full; `--soft-timeout <ms>` sets a ceiling that still fails early.
 
 ## Mouse Control
 
