@@ -17643,3 +17643,40 @@ async fn e2e_interactive_snapshot_does_not_repeat_link_text_in_rows_and_cells() 
     assert!(!snap.contains("row \"Alpha item"), "{snap}");
     let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
 }
+
+// ---------------------------------------------------------------------------
+// settle: an action that starts a navigation waits for the new document
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore]
+async fn e2e_click_with_settle_waits_for_the_navigation_it_started() {
+    let (port, server) = fixture_server(vec![
+        (
+            "/start",
+            page("<button id=\"go\" onclick=\"setTimeout(() => { location.href = '/next'; }, 60)\">Go</button>"),
+        ),
+        // the next page takes 700 ms to arrive
+        (
+            "/next",
+            Route::Html(
+                "<!doctype html><html><head><title>Arrived</title></head><body><h1>Next page</h1></body></html>".to_string(),
+                700,
+            ),
+        ),
+    ])
+    .await;
+    let mut state = DaemonState::new();
+    launch_and_open(&mut state, &format!("http://127.0.0.1:{port}/start")).await;
+    assert_success(
+        &execute_command(
+            &json!({ "id": "c", "action": "click", "selector": "#go", "settle": true }),
+            &mut state,
+        )
+        .await,
+    );
+    // without settle the old page is still current when click returns
+    assert_evaluate(&mut state, "t", "document.title", json!("Arrived")).await;
+    let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+    server.abort();
+}

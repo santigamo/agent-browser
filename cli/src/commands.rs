@@ -2117,11 +2117,17 @@ fn parse_command_inner(
 
         // === Batch ===
         "batch" => {
-            let bail = rest.contains(&"--bail");
+            // Stop at the first failing command unless --keep-going is given: later commands
+            // usually depend on the earlier ones having worked. (`--bail` is still accepted.)
+            let bail = if crate::fork::restores("batch") {
+                rest.contains(&"--bail")
+            } else {
+                !rest.contains(&"--keep-going")
+            };
             let omit_command = rest.contains(&"--omit-command");
             let commands: Vec<&str> = rest
                 .iter()
-                .filter(|a| **a != "--bail" && **a != "--omit-command")
+                .filter(|a| **a != "--bail" && **a != "--keep-going" && **a != "--omit-command")
                 .copied()
                 .collect();
             let mut cmd =
@@ -4013,6 +4019,7 @@ mod tests {
             cli_pin_tab: false,
             cli_input_mode: false,
             annotate: false,
+            post_snapshot: false,
             color_scheme: None,
             download_path: None,
             content_boundaries: false,
@@ -7319,6 +7326,13 @@ mod tests {
     fn test_batch_default() {
         let cmd = parse_command(&args("batch"), &default_flags()).unwrap();
         assert_eq!(cmd["action"], "batch");
+        // a batch stops at its first error unless told to keep going
+        assert_eq!(cmd["bail"], true);
+    }
+
+    #[test]
+    fn test_batch_keep_going_disables_bail() {
+        let cmd = parse_command(&args("batch --keep-going"), &default_flags()).unwrap();
         assert_eq!(cmd["bail"], false);
     }
 
@@ -7338,7 +7352,7 @@ mod tests {
         ];
         let cmd = parse_command(&cmd_args, &default_flags()).unwrap();
         assert_eq!(cmd["action"], "batch");
-        assert_eq!(cmd["bail"], false);
+        assert_eq!(cmd["bail"], true);
         let commands = cmd["commands"].as_array().unwrap();
         assert_eq!(commands.len(), 2);
         assert_eq!(commands[0], "open https://example.com");

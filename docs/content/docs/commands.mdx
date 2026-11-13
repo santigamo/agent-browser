@@ -716,8 +716,8 @@ Execute multiple commands in a single invocation. Commands can be passed as quot
 # Argument mode: each quoted argument is a full command
 agent-browser batch "open https://example.com" "snapshot -i" "screenshot"
 
-# With --bail to stop on first error
-agent-browser batch --bail "open https://example.com" "click @e1" "screenshot"
+# A batch stops at the first error; --keep-going runs every command
+agent-browser batch --keep-going "open https://example.com" "click @e1" "screenshot"
 
 # Stdin mode: pipe commands as JSON
 echo '[
@@ -735,7 +735,8 @@ echo '[["fill", "#password", "secret"]]' | agent-browser batch --json --omit-com
     <tr><th>Option</th><th>Description</th></tr>
   </thead>
   <tbody>
-    <tr><td><code>--bail</code></td><td>Stop on first error (default: continue all commands)</td></tr>
+    <tr><td><code>--keep-going</code></td><td>Run every command even after one fails (default: stop at the first error; <code>--bail</code> is accepted)</td></tr>
+    <tr><td><code>--snapshot</code></td><td>Print an interactive snapshot after the last command; put it on one command to snapshot after that command</td></tr>
     <tr><td><code>--json</code></td><td>Output results as a JSON array</td></tr>
     <tr><td><code>--omit-command</code></td><td>With <code>--json</code>, replace each <code>command</code> array with a stable zero-based <code>index</code> field</td></tr>
   </tbody>

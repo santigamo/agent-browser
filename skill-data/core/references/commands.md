@@ -43,6 +43,10 @@ After `connect`, the session stays attached until `agent-browser close`. Later c
 
 If the debugging port is not open yet, `connect` and `--cdp` wait up to 2 seconds for it before failing.
 
+### Batch: many commands in one call
+
+`batch` runs its commands in order and stops at the first error (`--keep-going` continues past errors; `--bail` is accepted and is the default). Commands are quoted arguments, or one per line on stdin (blank lines and `#` comments are skipped), or a JSON array of string arrays. Text output prints `[n/total] <command>` before each result and, on failure, `Stopped at command n of total`. Add `--snapshot` to an item, or once to the batch to snapshot after its last item, to print an interactive snapshot after the action settles (a navigation started by the action is awaited). `--snapshot` also works on a single command.
+
 ### Pre-navigation setup (one-turn batch)
 
 ```bash

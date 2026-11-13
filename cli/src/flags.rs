@@ -530,6 +530,8 @@ pub struct Flags {
     pub pin_tab: bool,
     pub session_name: Option<String>,
     pub annotate: bool,
+    /// After an action, also print an interactive snapshot of the page (`--snapshot`).
+    pub post_snapshot: bool,
     pub color_scheme: Option<String>,
     pub download_path: Option<String>,
     pub content_boundaries: bool,
@@ -764,6 +766,7 @@ pub fn try_parse_flags(args: &[String]) -> Result<Flags, String> {
         session_name: env::var("AGENT_BROWSER_SESSION_NAME")
             .ok()
             .or(config.session_name),
+        post_snapshot: false,
         annotate: env_var_is_truthy("AGENT_BROWSER_ANNOTATE") || config.annotate.unwrap_or(false),
         color_scheme: env::var("AGENT_BROWSER_COLOR_SCHEME")
             .ok()
@@ -1186,6 +1189,9 @@ pub fn try_parse_flags(args: &[String]) -> Result<Flags, String> {
                     i += 1;
                 }
             }
+            "--snapshot" => {
+                flags.post_snapshot = true;
+            }
             "--annotate" => {
                 let (val, consumed) = parse_bool_arg(args, i);
                 flags.annotate = val;
@@ -1414,6 +1420,7 @@ pub fn clean_args(args: &[String]) -> Vec<String> {
         "--no-ca-cert",
         "--use-system-ca",
         "--annotate",
+        "--snapshot",
         "--content-boundaries",
         "--confirm-interactive",
         "--no-auto-dialog",

@@ -1924,6 +1924,10 @@ fn main() {
         cmd["settings"] = wire;
     }
 
+    if flags.post_snapshot {
+        cmd["settle"] = json!(true);
+    }
+
     // Handle batch command: from args or stdin
     if cmd.get("action").and_then(|v| v.as_str()) == Some("batch") {
         let bail = cmd.get("bail").and_then(|v| v.as_bool()).unwrap_or(false);
@@ -1965,12 +1969,36 @@ fn main() {
             let success = resp.success;
             // Extract action for context-specific output handling
             let action = cmd.get("action").and_then(|v| v.as_str());
+            // `--snapshot`: after a successful action, also read the page the action left behind.
+            let wants_snapshot = flags.post_snapshot
+                && success
+                && !matches!(action, Some("snapshot") | Some("batch") | Some("close"));
+            let mut post_snap = if wants_snapshot {
+                post_action_snapshot(&flags, &daemon_opts)
+            } else {
+                None
+            };
+            if flags.json {
+                if let (Some(snap), Some(obj)) = (
+                    post_snap.take(),
+                    resp.data.as_mut().and_then(|d| d.as_object_mut()),
+                ) {
+                    if let Some(text) = snap.data.as_ref().and_then(|d| d.get("snapshot")).cloned()
+                    {
+                        obj.entry("snapshot").or_insert(text);
+                    }
+                }
+            }
             if action == Some("close") && close_completed(&resp) {
                 clear_closed_session(&flags.session);
             }
             print_response_with_opts(&resp, action, &output_opts);
             if !success {
                 exit(1);
+            }
+            if let Some(snap) = post_snap {
+                println!();
+                print_response_with_opts(&snap, Some("snapshot"), &output_opts);
             }
         }
         Err(e) => {
@@ -2003,7 +2031,7 @@ fn send_command_with_respawn(
     }
 }
 
-/// Read batch commands given on stdin as a JSON array of string arrays.
+/// Read batch commands given on stdin: one command per line, or a JSON array of string arrays.
 fn read_batch_stdin(flags: &Flags) -> Vec<Vec<String>> {
     use std::io::Read as _;
 
@@ -2015,6 +2043,17 @@ fn read_batch_stdin(flags: &Flags) -> Vec<Vec<String>> {
             eprintln!("{} Failed to read stdin: {}", color::error_indicator(), e);
         }
         exit(1);
+    }
+
+    // One command per line (shell-style quoting; blank lines and # comments are skipped), or a
+    // JSON array of string arrays.
+    if !input.trim_start().starts_with('[') {
+        return input
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .map(commands::shell_words_split)
+            .collect();
     }
 
     match serde_json::from_str(&input) {
@@ -2060,27 +2099,30 @@ fn run_batch(
     let mut had_error = false;
     let mut relaunch_applied = false;
 
-    for (i, cmd_args) in commands.iter().enumerate() {
-        if cmd_args.is_empty() {
+    let total = commands.len();
+    for (i, item_args) in commands.iter().enumerate() {
+        if item_args.is_empty() {
             continue;
         }
+        // `--snapshot` on an item asks for an interactive snapshot after it succeeds.
+        // An outer `batch --snapshot` observes once, after the last item.
+        let wants_snapshot =
+            item_args.iter().any(|a| a == "--snapshot") || (flags.post_snapshot && i + 1 == total);
+        let stripped: Vec<String> = item_args
+            .iter()
+            .filter(|a| *a != "--snapshot")
+            .cloned()
+            .collect();
+        let cmd_args = &stripped;
 
-        let mut parsed = match commands::parse_batch_command(cmd_args, flags) {
-            Ok(mut c) => {
-                if flags.default_timeout.is_none() {
-                    commands::inherit_wait_timeout(
-                        &mut c,
-                        connection::running_daemon_default_timeout(&flags.session),
-                    );
-                }
-                c
-            }
-            Err(e) => {
+        let (mut parsed, action) = match build_batch_command(flags, cmd_args, relaunch_applied) {
+            Ok(built) => built,
+            Err(message) => {
                 had_error = true;
                 if flags.json {
                     let mut result = batch_result_identity(i, cmd_args, omit_command);
                     result["success"] = json!(false);
-                    result["error"] = json!(e.format());
+                    result["error"] = json!(message);
                     results.push(result);
                     if bail {
                         break;
@@ -2090,7 +2132,7 @@ fn run_batch(
                         "{} Command {}: {}",
                         color::error_indicator(),
                         i + 1,
-                        e.format()
+                        message
                     );
                     if bail {
                         exit(1);
@@ -2099,25 +2141,9 @@ fn run_batch(
                 continue;
             }
         };
-        attach_input_mode(&mut parsed, flags);
-        match parsed.get("action").and_then(|v| v.as_str()) {
-            Some("read") => parsed["tls"] = json!(tls::session_options(flags, &flags.session)),
-            Some("close") => tls::clear_session(&flags.session),
-            _ => {}
+        if wants_snapshot {
+            parsed["settle"] = json!(true);
         }
-
-        let action = parsed
-            .get("action")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
-        attach_plugins_to_command(&mut parsed, &flags.plugins);
-        attach_restore_config_to_command(&mut parsed, flags);
-        let settings = batch_item_settings(flags, &parsed, relaunch_applied);
-        if let Some(wire) = settings.to_wire() {
-            parsed["settings"] = wire;
-        }
-
-        attach_pin_tab_to_command(&mut parsed, flags);
 
         match send_command_with_respawn(parsed, &flags.session, daemon_opts) {
             Ok(resp) => {
@@ -2144,15 +2170,35 @@ fn run_batch(
                     }
                     results.push(result);
                 } else {
-                    if i > 0 {
-                        println!();
-                    }
+                    println!("[{}/{}] {}", i + 1, total, batch_item_label(cmd_args));
                     print_response_with_opts(&resp, action.as_deref(), &output_opts);
+                }
+                if resp.success && wants_snapshot && action.as_deref() != Some("snapshot") {
+                    if let Some(snap) = post_action_snapshot(flags, daemon_opts) {
+                        if flags.json {
+                            if let Some(last) = results.last_mut() {
+                                last["snapshot"] = json!(snap
+                                    .data
+                                    .as_ref()
+                                    .and_then(|d| d.get("snapshot"))
+                                    .cloned()
+                                    .unwrap_or(serde_json::Value::Null));
+                            }
+                        } else {
+                            print_response_with_opts(&snap, Some("snapshot"), &output_opts);
+                        }
+                    }
                 }
                 if !resp.success {
                     had_error = true;
                     if bail {
                         if !flags.json {
+                            eprintln!(
+                                "Stopped at command {} of {}; {} not run (use --keep-going to continue past errors).",
+                                i + 1,
+                                total,
+                                total - i - 1
+                            );
                             exit(1);
                         }
                         break;
@@ -2189,6 +2235,83 @@ fn run_batch(
     if had_error {
         exit(1);
     }
+}
+
+/// Parses one batch item and attaches everything the daemon needs: input mode, plugins, restore
+/// config, launch settings and tab pinning. Returns the wire command and its action name, or the
+/// parse error text.
+fn build_batch_command(
+    flags: &Flags,
+    args: &[String],
+    relaunch_applied: bool,
+) -> Result<(serde_json::Value, Option<String>), String> {
+    let mut parsed = commands::parse_batch_command(args, flags).map_err(|e| e.format())?;
+    if flags.default_timeout.is_none() {
+        commands::inherit_wait_timeout(
+            &mut parsed,
+            connection::running_daemon_default_timeout(&flags.session),
+        );
+    }
+    attach_input_mode(&mut parsed, flags);
+    match parsed.get("action").and_then(|v| v.as_str()) {
+        Some("read") => parsed["tls"] = json!(tls::session_options(flags, &flags.session)),
+        Some("close") => tls::clear_session(&flags.session),
+        _ => {}
+    }
+    let action = parsed
+        .get("action")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    attach_plugins_to_command(&mut parsed, &flags.plugins);
+    attach_restore_config_to_command(&mut parsed, flags);
+    let settings = batch_item_settings(flags, &parsed, relaunch_applied);
+    if let Some(wire) = settings.to_wire() {
+        parsed["settings"] = wire;
+    }
+    attach_pin_tab_to_command(&mut parsed, flags);
+    Ok((parsed, action))
+}
+
+/// A short one-line label for a batch item, for the `[n/total]` header.
+fn batch_item_label(args: &[String]) -> String {
+    // Typed values (passwords, tokens) are not echoed back into the output.
+    let joined = match args.first().map(String::as_str) {
+        Some("fill") | Some("type") | Some("keyboard") if args.len() > 2 => {
+            format!("{} {} <text>", args[0], args[1])
+        }
+        _ => args.join(" "),
+    };
+    if joined.chars().count() > 80 {
+        format!("{}...", joined.chars().take(77).collect::<String>())
+    } else {
+        joined
+    }
+}
+
+/// Sends an interactive, compact snapshot of the current page; used by `--snapshot`.
+fn post_action_snapshot(
+    flags: &Flags,
+    daemon_opts: &DaemonOptions,
+) -> Option<connection::Response> {
+    let args: Vec<String> = ["snapshot", "-i", "-c"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let mut cmd = commands::parse_batch_command(&args, flags).ok()?;
+    attach_input_mode(&mut cmd, flags);
+    attach_pin_tab_to_command(&mut cmd, flags);
+    // Retry once: the page may have started navigating while the snapshot was taken.
+    for attempt in 0..2 {
+        if let Ok(resp) = send_command_with_respawn(cmd.clone(), &flags.session, daemon_opts) {
+            if resp.success {
+                return Some(resp);
+            }
+        }
+        if attempt == 0 {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+    }
+    None
 }
 
 fn batch_result_identity(

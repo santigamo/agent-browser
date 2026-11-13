@@ -2785,6 +2785,8 @@ Options:
   --if-changed         Recommended: skip unchanged images to save tokens
   --threshold <0-1>    Maximum changed-pixel ratio treated as unchanged
                        (implies --if-changed, default: 0)
+  --snapshot           After a successful action, also print an interactive snapshot of the
+                       page it left behind (a navigation the action started is awaited first)
   --annotate           Overlay numbered labels on interactive elements.
                        Each label [N] corresponds to ref @eN from snapshot.
                        Prints a legend mapping labels to element roles/names.
@@ -4167,22 +4169,32 @@ agent-browser batch - Execute multiple commands sequentially
 Usage: agent-browser batch [options] "<cmd1>" "<cmd2>" ...
        echo '<json>' | agent-browser batch [options]
 
-Runs multiple commands in sequence. Commands can be passed as quoted
-arguments or piped as JSON via stdin. Results are printed in order,
-separated by blank lines (or as a JSON array with --json).
+Runs multiple commands in sequence and stops at the first error. Commands can be
+passed as quoted arguments, piped one per line, or piped as JSON via stdin.
+Results are printed in order, each under a `[n/total] <command>` line (or as a
+JSON array with --json). After a failure the output says where it stopped.
 
 Put global flags such as `--init-script` and `--enable` on the outer batch
 invocation. Keep command-specific options and literal command arguments inside
 each item.
 
 Options:
-  --bail               Stop on first error (default: continue all commands)
+  --keep-going         Run every command even after one fails
+                       (default: stop at the first error; --bail is accepted)
+  --snapshot           Print an interactive snapshot after the last command. Put --snapshot
+                       on one command to snapshot after that command; a navigation the
+                       command started is awaited first
   --json               Output results as a JSON array
   --omit-command       With --json, replace each command array with a zero-based `index` field
 
 Argument Mode:
   Each quoted argument is a full command string:
   agent-browser batch "open https://example.com" "snapshot -i" "screenshot"
+
+Stdin Mode (lines):
+  One command per line, shell quoting; blank lines and lines starting with # are skipped:
+  open https://example.com
+  click @e1 --snapshot
 
 Stdin Mode (JSON):
   A JSON array of string arrays. Each inner array is one command:
@@ -4197,10 +4209,10 @@ Stdin Mode (JSON):
 Examples:
   agent-browser batch "open https://example.com" "screenshot"
   agent-browser --enable react-devtools batch "open" "navigate data:text/html,<h1>hi</h1>"
-  agent-browser batch --bail "open https://example.com" "click @e1" "screenshot"
+  agent-browser batch --keep-going "open https://example.com" "click @e1" "screenshot"
   echo '[["open", "https://example.com"], ["snapshot"]]' | agent-browser batch
   echo '[["fill", "#password", "secret"]]' | agent-browser batch --json --omit-command
-  agent-browser batch --bail < commands.json
+  agent-browser batch < commands.txt
 
 With --json --omit-command, each row replaces its command array with a stable zero-based `index` field on success, failure, or --bail. This only removes command arrays and does not make output safe for secrets. Errors and response data are unchanged: type echoes typed text, and get value/eval may return input values.
 "##
@@ -4667,7 +4679,7 @@ Init scripts:
 
 Batch:
   batch [options] ["cmd" ...] Execute multiple commands sequentially (args or stdin)
-                              --bail stops on first error (default: continue all)
+                              stops at the first error; --keep-going runs them all
                               --omit-command uses a zero-based `index` field with --json
 
 Auth Vault:

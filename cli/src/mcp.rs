@@ -3885,8 +3885,11 @@ fn call_batch(arguments: &Value) -> Result<Value, ProtocolError> {
         parsed_commands.push(args);
     }
     let mut args = vec!["batch".to_string()];
-    if optional_bool(arguments, "bail")?.unwrap_or(false) {
-        args.push("--bail".to_string());
+    // The CLI stops at the first error by default; "bail": false asks to continue past errors.
+    match optional_bool(arguments, "bail")? {
+        Some(true) => args.push("--bail".to_string()),
+        Some(false) => args.push("--keep-going".to_string()),
+        None => {}
     }
     if optional_bool(arguments, "omitCommand")?.unwrap_or(false) {
         args.push("--omit-command".to_string());

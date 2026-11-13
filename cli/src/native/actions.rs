@@ -7289,6 +7289,7 @@ async fn handle_click(cmd: &Value, state: &mut DaemonState) -> Result<Value, Str
         .await?;
     }
 
+    let settle_rx = settle_receiver(cmd, &mgr.client);
     let result = interaction::click(
         &mgr.client,
         &session_id,
@@ -7299,6 +7300,7 @@ async fn handle_click(cmd: &Value, state: &mut DaemonState) -> Result<Value, Str
         &state.iframe_sessions,
     )
     .await?;
+    settle_after_action(settle_rx, &session_id).await;
     record_click_animation(
         &result,
         &mut state.mouse_state,
@@ -7400,6 +7402,63 @@ async fn handle_type(cmd: &Value, state: &mut DaemonState) -> Result<Value, Stri
     Ok(json!({ "typed": text }))
 }
 
+/// The event receiver `settle_after_action` needs, subscribed before the action runs, when the
+/// command asked to settle (`--snapshot`, or a `run` step that may navigate).
+fn settle_receiver(
+    cmd: &Value,
+    client: &super::cdp::client::CdpClient,
+) -> Option<broadcast::Receiver<CdpEvent>> {
+    cmd.get("settle")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        .then(|| client.subscribe())
+}
+
+/// After an action that may navigate (click, press, ...), gives a navigation that starts within
+/// ~150 ms the chance to reach DOMContentLoaded, so a snapshot taken right after sees the new
+/// page and not the old one. Needs a receiver subscribed before the action.
+async fn settle_after_action(rx: Option<broadcast::Receiver<CdpEvent>>, session_id: &str) {
+    let Some(mut rx) = rx else { return };
+    let started = tokio::time::timeout(std::time::Duration::from_millis(150), async {
+        loop {
+            match rx.recv().await {
+                Ok(ev)
+                    if ev.method == "Page.frameStartedLoading"
+                        && ev.session_id.as_deref() == Some(session_id) =>
+                {
+                    return ev
+                        .params
+                        .get("frameId")
+                        .and_then(Value::as_str)
+                        .map(String::from);
+                }
+                Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(_) => return None,
+            }
+        }
+    })
+    .await;
+    let Ok(Some(frame_id)) = started else { return };
+    let _ = tokio::time::timeout(std::time::Duration::from_secs(8), async {
+        loop {
+            match rx.recv().await {
+                Ok(ev) if ev.session_id.as_deref() == Some(session_id) => {
+                    let same_frame =
+                        ev.params.get("frameId").and_then(Value::as_str) == Some(frame_id.as_str());
+                    if ev.method == "Page.domContentEventFired"
+                        || (ev.method == "Page.frameStoppedLoading" && same_frame)
+                    {
+                        return;
+                    }
+                }
+                Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(_) => return,
+            }
+        }
+    })
+    .await;
+}
+
 async fn handle_press(cmd: &Value, state: &mut DaemonState) -> Result<Value, String> {
     let mgr = state.browser.as_ref().ok_or("Browser not launched")?;
     let session_id = mgr.active_session_id()?.to_string();
@@ -7411,7 +7470,9 @@ async fn handle_press(cmd: &Value, state: &mut DaemonState) -> Result<Value, Str
     // Parse modifier+key chords like "Control+a", "Shift+Enter", "Control+Shift+a"
     let (actual_key, modifiers) = parse_key_chord(key);
 
+    let settle_rx = settle_receiver(cmd, &mgr.client);
     interaction::press_key_with_modifiers(&mgr.client, &session_id, &actual_key, modifiers).await?;
+    settle_after_action(settle_rx, &session_id).await;
     Ok(json!({ "pressed": key }))
 }
 

@@ -88,8 +88,8 @@ fn batch_preserves_results_and_parse_errors_with_optional_command_omission() {
             if omit {
                 args.push("--omit-command");
             }
-            if bail {
-                args.push("--bail");
+            if !bail {
+                args.push("--keep-going");
             }
             let rows = fixture.run(&args, &commands.to_string(), 1);
             assert_eq!(rows.as_array().unwrap().len(), if bail { 2 } else { 3 });
@@ -114,6 +114,7 @@ fn batch_preserves_results_and_parse_errors_with_optional_command_omission() {
         let mut args = vec![
             "batch",
             "--json",
+            "--keep-going",
             "stream 'status'",
             "'PUBLIC_SENTINEL with spaces'",
             "stream \"status\"",
@@ -157,8 +158,8 @@ fn batch_rejects_item_global_flags_across_cli_and_mcp() {
                 result["structuredContent"]["response"].clone()
             } else {
                 let mut args = vec!["batch", "--json"];
-                if bail {
-                    args.push("--bail");
+                if !bail {
+                    args.push("--keep-going");
                 }
                 if mode == "quoted" {
                     args.extend([
@@ -574,4 +575,19 @@ fn errors_content_boundaries_skip_empty_results() {
         json!([])
     );
     server.join().unwrap();
+}
+
+#[test]
+fn batch_stops_at_the_first_error_by_default_and_reads_one_command_per_line() {
+    let fixture = Fixture::new();
+    // plain lines on stdin, with a comment and a blank line, in shell quoting
+    let script =
+        "# check the daemon\nstream status\n\nNOT_A_COMMAND 'with spaces'\nstream status\n";
+    let rows = fixture.run(&["batch", "--json"], script, 1);
+    let rows = rows.as_array().unwrap();
+    assert_eq!(rows.len(), 2, "stopped at the failing line: {rows:?}");
+    assert_eq!(rows[0]["success"], true);
+    assert_eq!(rows[1]["success"], false);
+    let rows = fixture.run(&["batch", "--json", "--keep-going"], script, 1);
+    assert_eq!(rows.as_array().unwrap().len(), 3);
 }
