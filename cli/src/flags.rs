@@ -420,6 +420,7 @@ pub(crate) fn extract_config_path(args: &[String]) -> Option<Option<String>> {
         "--color-scheme",
         "--download-path",
         "--max-output",
+        "--offset",
         "--allowed-domains",
         "--capture",
         "--action-policy",
@@ -533,6 +534,8 @@ pub struct Flags {
     pub download_path: Option<String>,
     pub content_boundaries: bool,
     pub max_output: Option<usize>,
+    /// Character offset where page text output (`read`, `get text`, `eval`) starts, for paging.
+    pub output_offset: usize,
     pub allowed_domains: Option<Vec<String>>,
     pub capture: Option<Vec<String>>,
     pub action_policy: Option<String>,
@@ -774,6 +777,7 @@ pub fn try_parse_flags(args: &[String]) -> Result<Flags, String> {
             .ok()
             .and_then(|value| parse_max_output_value(&value, "AGENT_BROWSER_MAX_OUTPUT"))
             .or(config.max_output),
+        output_offset: 0,
         allowed_domains: env::var("AGENT_BROWSER_ALLOWED_DOMAINS")
             .ok()
             .map(|s| {
@@ -1218,6 +1222,14 @@ pub fn try_parse_flags(args: &[String]) -> Result<Flags, String> {
                     i += 1;
                 }
             }
+            "--offset" => {
+                if let Some(s) = args.get(i + 1) {
+                    if let Some(n) = parse_max_output_value(s, "--offset") {
+                        flags.output_offset = n;
+                    }
+                    i += 1;
+                }
+            }
             "--allowed-domains" => {
                 if let Some(s) = args.get(i + 1) {
                     flags.allowed_domains = Some(
@@ -1443,6 +1455,7 @@ pub fn clean_args(args: &[String]) -> Vec<String> {
         "--color-scheme",
         "--download-path",
         "--max-output",
+        "--offset",
         "--allowed-domains",
         "--capture",
         "--action-policy",
@@ -1973,6 +1986,18 @@ mod tests {
     fn test_cli_profile_tracking() {
         let flags = parse_flags(&args("--profile /path/to/profile snapshot"));
         assert!(flags.cli_profile);
+    }
+
+    #[test]
+    fn test_offset_flag_parses_and_is_a_value_flag() {
+        let flags = parse_flags(&args("--offset 12000 --max-output 500 get text body"));
+        assert_eq!(flags.output_offset, 12000);
+        assert_eq!(flags.max_output, Some(500));
+        assert_eq!(
+            clean_args(&args("--offset 12000 get text body")),
+            args("get text body")
+        );
+        assert_eq!(parse_flags(&args("get text body")).output_offset, 0);
     }
 
     #[test]

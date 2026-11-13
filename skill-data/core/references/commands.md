@@ -25,6 +25,9 @@ agent-browser read [url]      # Fetch agent-readable text, or read rendered acti
                               # --filter narrows page content to matching heading sections
                               # Honors --allowed-domains, --content-boundaries, and --max-output
                               # Invalid --max-output values warn and keep the previous limit
+                              # --max-output N keeps the head and the tail of page text (read, get text/html, eval)
+                              # and marks the omitted middle; --offset N starts at character N to page through it.
+                              # A terminal caps page text at 12000 characters by default, piped output and --json do not
                               # Options: --raw, --require-md, --outline, --llms <index|full>, --filter, --timeout <ms>
 agent-browser back            # Go back
 agent-browser forward         # Go forward

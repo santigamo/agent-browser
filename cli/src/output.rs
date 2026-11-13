@@ -21,6 +21,8 @@ pub struct OutputOptions {
     pub json: bool,
     pub content_boundaries: bool,
     pub max_output: Option<usize>,
+    /// Character where page text output starts (`--offset`), to page through a capped read.
+    pub offset: usize,
 }
 
 impl OutputOptions {
@@ -29,8 +31,93 @@ impl OutputOptions {
             json: flags.json,
             content_boundaries: flags.content_boundaries,
             max_output: flags.max_output,
+            offset: flags.output_offset,
         }
     }
+}
+
+/// Character cap for page text (`read`, `get text`, `get html`, `eval`) when a person reads it in a
+/// terminal and gave no `--max-output`. Piped output and `--json` are never capped unless
+/// `--max-output`, `AGENT_BROWSER_MAX_OUTPUT` or `--offset` ask for it.
+pub const DEFAULT_TEXT_CAP: usize = 12_000;
+
+/// The limit that applies to page text: an explicit `--max-output` (0 means none), else the
+/// default cap on an interactive terminal, else none.
+fn text_limit(opts: &OutputOptions, stdout_is_terminal: bool) -> Option<usize> {
+    match opts.max_output {
+        Some(0) => None,
+        Some(n) => Some(n),
+        None if stdout_is_terminal && !opts.json => Some(DEFAULT_TEXT_CAP),
+        None => None,
+    }
+}
+
+/// The one head and tail cap of page text, shared by the CLI printer, `run` and the MCP server.
+///
+/// Without `offset`, a text longer than `limit` keeps its head and its tail with a marker for the
+/// omitted middle: the answer on a long page sits at the end (footers, appendices, totals) as
+/// often as at the start. With `offset` it returns the window of `limit` characters that starts
+/// there, to page through the text. `limit` None means no limit.
+pub fn cap_text(content: &str, limit: Option<usize>, offset: usize) -> String {
+    // Fast path: the byte length bounds the character count from above.
+    if offset == 0 && limit.is_none_or(|l| content.len() <= l) {
+        return content.to_string();
+    }
+    let total = content.chars().count();
+    let byte = |n: usize| {
+        content
+            .char_indices()
+            .nth(n)
+            .map(|(i, _)| i)
+            .unwrap_or(content.len())
+    };
+    if offset == 0 {
+        let limit = limit.unwrap_or(total);
+        if total <= limit {
+            return content.to_string();
+        }
+        let head = limit / 2;
+        let tail = limit - head;
+        return format!(
+            "{}\n[... chars {}-{} of {} omitted. Read them with --offset {} (window size --max-output), everything with --max-output 0, or narrow the read (get text <selector>, read --filter <text>, read --outline) ...]\n{}",
+            &content[..byte(head)],
+            head,
+            total - tail,
+            total,
+            head,
+            &content[byte(total - tail)..]
+        );
+    }
+    let start = offset.min(total);
+    let end = limit.map_or(total, |l| (start + l).min(total));
+    let mut out = format!(
+        "[showing chars {}-{} of {} (from --offset {})]\n",
+        start, end, total, start
+    );
+    out.push_str(&content[byte(start)..byte(end)]);
+    if end < total {
+        out.push_str(&format!(
+            "\n[truncated at char {}. Continue with --offset {}]",
+            end, end
+        ));
+    }
+    out
+}
+
+/// Like `print_with_boundaries` for page text: applies the head and tail cap first.
+fn print_capped_text(content: &str, origin: Option<&str>, opts: &OutputOptions) {
+    let capped = cap_text(
+        content,
+        text_limit(opts, std::io::IsTerminal::is_terminal(&std::io::stdout())),
+        opts.offset,
+    );
+    let inner = OutputOptions {
+        json: opts.json,
+        content_boundaries: opts.content_boundaries,
+        max_output: None,
+        offset: 0,
+    };
+    print_with_boundaries(&capped, origin, &inner);
 }
 
 fn truncate_if_needed(content: &str, max: Option<usize>) -> String {
@@ -1079,7 +1166,7 @@ fn print_primary_response(resp: &Response, action: Option<&str>, opts: &OutputOp
                     .get("finalUrl")
                     .and_then(|v| v.as_str())
                     .or_else(|| data.get("url").and_then(|v| v.as_str()));
-                print_with_boundaries(content, origin, opts);
+                print_capped_text(content, origin, opts);
             }
             return;
         }
@@ -1162,12 +1249,12 @@ fn print_primary_response(resp: &Response, action: Option<&str>, opts: &OutputOp
         }
         // Text
         if let Some(text) = data.get("text").and_then(|v| v.as_str()) {
-            print_with_boundaries(text, origin, opts);
+            print_capped_text(text, origin, opts);
             return;
         }
         // HTML
         if let Some(html) = data.get("html").and_then(|v| v.as_str()) {
-            print_with_boundaries(html, origin, opts);
+            print_capped_text(html, origin, opts);
             return;
         }
         // Value
@@ -1225,7 +1312,7 @@ fn print_primary_response(resp: &Response, action: Option<&str>, opts: &OutputOp
                 return;
             }
             let formatted = serde_json::to_string_pretty(result).unwrap_or_default();
-            print_with_boundaries(&formatted, origin, opts);
+            print_capped_text(&formatted, origin, opts);
             return;
         }
         // iOS Devices
@@ -2197,7 +2284,9 @@ Global Options:
   --headers <json>     Additional HTTP headers, such as Authorization
   --allowed-domains <list>  Restrict read fetches and redirects to allowed domains
   --content-boundaries Wrap read output in boundary markers
-  --max-output <chars> Truncate read output to N chars
+  --max-output <chars> Cap output at N chars, keeping its head and tail (read, get text/html, eval;
+                       0 = no limit; interactive terminals cap page text at 12000 by default)
+  --offset <chars>     Start page text output at this character, to page through a capped read
   Invalid --max-output and AGENT_BROWSER_MAX_OUTPUT values warn and leave the
   existing output limit unchanged.
 
@@ -4993,6 +5082,63 @@ pub fn print_version() {
 
 #[cfg(test)]
 mod tests {
+    use super::{cap_text, text_limit, DEFAULT_TEXT_CAP};
+
+    #[test]
+    fn test_cap_text_keeps_head_and_tail_and_pages_with_offset() {
+        let text = "x".repeat(30_000);
+        let capped = cap_text(&text, Some(DEFAULT_TEXT_CAP), 0);
+        assert!(capped.contains("chars 6000-24000 of 30000 omitted"));
+        assert!(capped.contains("--offset 6000"));
+        assert!(capped.len() < 12_300);
+        // the answer at the very end survives
+        let tail_marked = format!("{}END", "x".repeat(29_000));
+        assert!(cap_text(&tail_marked, Some(DEFAULT_TEXT_CAP), 0).ends_with("END"));
+        let paged = cap_text(&text, Some(100), 29_950);
+        assert!(paged.starts_with("[showing chars 29950-30000 of 30000"));
+        assert!(!paged.contains("truncated"));
+        let mid = cap_text(&text, Some(100), 6000);
+        assert!(mid.contains("Continue with --offset 6100"));
+        assert_eq!(cap_text(&text, None, 0).len(), 30_000);
+        assert_eq!(cap_text("short", Some(DEFAULT_TEXT_CAP), 0), "short");
+    }
+
+    #[test]
+    fn test_cap_text_counts_characters_not_bytes() {
+        let text = "é".repeat(50);
+        let capped = cap_text(&text, Some(10), 0);
+        assert!(
+            capped.starts_with("ééééé\n[... chars 5-45 of 50 omitted"),
+            "{capped}"
+        );
+        assert!(capped.ends_with("ééééé"));
+        assert!(cap_text(&text, Some(10), 48).contains("éé"));
+    }
+
+    #[test]
+    fn test_default_text_cap_applies_only_to_an_interactive_terminal() {
+        let none = OutputOptions::default();
+        assert_eq!(text_limit(&none, true), Some(DEFAULT_TEXT_CAP));
+        // piped stdout, as an agent's shell tool sees it, is never capped by default
+        assert_eq!(text_limit(&none, false), None);
+        // nor is --json, even on a terminal
+        let json = OutputOptions {
+            json: true,
+            ..Default::default()
+        };
+        assert_eq!(text_limit(&json, true), None);
+        // an explicit limit applies everywhere, and 0 lifts the default
+        let explicit = OutputOptions {
+            max_output: Some(500),
+            ..Default::default()
+        };
+        assert_eq!(text_limit(&explicit, false), Some(500));
+        let zero = OutputOptions {
+            max_output: Some(0),
+            ..Default::default()
+        };
+        assert_eq!(text_limit(&zero, true), None);
+    }
 
     #[test]
     fn flow_save_text_shows_why_a_flow_is_not_local() {

@@ -3999,6 +3999,7 @@ mod tests {
             download_path: None,
             content_boundaries: false,
             max_output: None,
+            output_offset: 0,
             allowed_domains: None,
             capture: None,
             action_policy: None,

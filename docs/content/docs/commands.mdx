@@ -683,7 +683,8 @@ See [Init Scripts & Extensions](/init-scripts) for launch-time scripts, script r
 --color-scheme <scheme>  # Color scheme: dark, light, no-preference
 --download-path <path>   # Default download directory
 --content-boundaries     # Wrap page output in boundary markers for LLM safety
---max-output <chars>     # Truncate page output to N characters
+--max-output <chars>     # Cap page text (read, get text/html, eval) at N characters, keeping head and tail; 0 = no limit; terminals cap at 12000 by default
+--offset <chars>         # Start page text at this character, to page through a capped read
 --allowed-domains <list> # Allowed domains; rejects restore/state replay, profile/session startup args, and direct-page providers
 --action-policy <path>   # Path to action policy JSON file
 --confirm-actions <list> # Action categories requiring confirmation
