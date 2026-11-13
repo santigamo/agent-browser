@@ -434,6 +434,30 @@ fn parse_command_inner(
             // scripts before the first real navigation (see `batch`).
             // `goto` and `navigate` still require a URL since those verbs
             // imply the navigation itself.
+            // `--wait-until <load|domcontentloaded|networkidle|none>` names the wait the caller
+            // wants. Without it, a `load` that never fires ends with a note once the document is
+            // parsed (see `open --help`); with it, that wait is strict.
+            let mut rest = rest.clone();
+            let mut wait_until: Option<String> = None;
+            if let Some(idx) = rest.iter().position(|&s| s == "--wait-until") {
+                let usage = "open <url> [--wait-until <load|domcontentloaded|networkidle|none>]";
+                let raw = rest
+                    .get(idx + 1)
+                    .ok_or_else(|| ParseError::MissingArguments {
+                        context: "open --wait-until".to_string(),
+                        usage,
+                    })?;
+                if !matches!(*raw, "load" | "domcontentloaded" | "networkidle" | "none") {
+                    return Err(ParseError::InvalidValue {
+                        message: format!(
+                            "--wait-until expects load, domcontentloaded, networkidle or none, got '{raw}'"
+                        ),
+                        usage,
+                    });
+                }
+                wait_until = Some((*raw).to_string());
+                rest.drain(idx..=idx + 1);
+            }
             let first_url = rest.iter().find(|a| !a.starts_with("--"));
             let url = match first_url {
                 Some(u) => *u,
@@ -451,6 +475,9 @@ fn parse_command_inner(
             let mut nav_cmd = json!({ "id": id, "action": "navigate", "url": url });
             if flags.provider.is_some() {
                 nav_cmd["waitUntil"] = json!("none");
+            }
+            if let Some(state) = wait_until {
+                nav_cmd["waitUntil"] = json!(state);
             }
             if let Some(ref headers_json) = flags.headers {
                 let headers =
@@ -5569,6 +5596,35 @@ mod tests {
         let cmd = parse_command(&args("wait --fn true"), &default_flags()).unwrap();
         assert!(cmd.get("failFast").is_none());
         assert!(parse_command(&args("wait #a --soft-timeout abc"), &default_flags()).is_err());
+    }
+
+    #[test]
+    fn test_open_wait_until_is_explicit_and_validated() {
+        let cmd = parse_command(
+            &args("open https://a.test --wait-until load"),
+            &default_flags(),
+        )
+        .unwrap();
+        assert_eq!(cmd["url"], "https://a.test");
+        assert_eq!(cmd["waitUntil"], "load");
+        let cmd = parse_command(
+            &args("open --wait-until networkidle https://a.test"),
+            &default_flags(),
+        )
+        .unwrap();
+        assert_eq!(cmd["url"], "https://a.test");
+        assert_eq!(cmd["waitUntil"], "networkidle");
+        // without it the daemon applies its default, bounded wait
+        let cmd = parse_command(&args("open https://a.test"), &default_flags()).unwrap();
+        assert!(cmd.get("waitUntil").is_none());
+        assert!(parse_command(
+            &args("open https://a.test --wait-until soon"),
+            &default_flags()
+        )
+        .is_err());
+        assert!(
+            parse_command(&args("open https://a.test --wait-until"), &default_flags()).is_err()
+        );
     }
 
     #[test]

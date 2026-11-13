@@ -2180,6 +2180,10 @@ When the `load` event never fires (an endless poll, a hanging tracker) but the d
 is parsed, open returns about 3 s after DOMContentLoaded with a `note:` line (`loadWarning`
 in JSON) instead of failing. An explicit `--wait-until load` keeps waiting for the event.
 
+Options:
+  --wait-until <state>  load, domcontentloaded, networkidle or none. Any state named here is
+                        waited for strictly: a wait that cannot finish fails the command
+
 Global Options:
   --json               Output as JSON
   --session <name>     Session name: Unicode letters/numbers, hyphens, and underscores only
