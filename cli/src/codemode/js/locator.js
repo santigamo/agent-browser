@@ -1,3 +1,4 @@
+// Added in the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0); see CHANGES-FORK.md.
 // Code mode: Playwright-style locator objects (page.locator, page.getByText, ...).
 //
 // A locator is a list of steps (selector.js) plus a description for messages. It resolves when a

@@ -1,3 +1,4 @@
+// Added in the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0); see CHANGES-FORK.md.
 //! Switches for the browser-duel fork's changed defaults.
 //!
 //! The fork changes a few defaults of upstream agent-browser (see CHANGES-FORK.md). Each one can

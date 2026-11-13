@@ -1,3 +1,4 @@
+// Added in the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0); see CHANGES-FORK.md.
 //! Code mode: `agent-browser run <script.js|->` executes a JavaScript script with a
 //! Playwright-like `page` handle. Every `page.*` call is turned into a normal agent-browser
 //! command and sent through the same parser and daemon as a batch item, so refs (@e1), waits, the

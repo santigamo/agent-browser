@@ -1,3 +1,4 @@
+// Added in the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0); see CHANGES-FORK.md.
 //! Page-side selector helpers shared by every command that takes a CSS or XPath target.
 //!
 //! One JavaScript library, instantiated inline in the expression that needs it, so that click,

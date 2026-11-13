@@ -1,3 +1,4 @@
+// Added in the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0); see CHANGES-FORK.md.
 //! Unit tests for code mode: the JS half is run against a mocked `__cmd`, so what each page.*
 //! call sends to the CLI and how it reacts to the answers is checked without a browser.
 

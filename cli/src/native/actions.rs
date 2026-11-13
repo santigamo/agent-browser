@@ -1,3 +1,4 @@
+// Modified for the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0, section 4(b)); see CHANGES-FORK.md.
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -15913,6 +15914,32 @@ fn attach_tab_gone_data(resp: &mut Value, state: &DaemonState) {
 
 #[cfg(test)]
 mod tests {
+    /// `wait --url` globs: `**` and `*` both cross `/` here (more permissive than Playwright's `*`),
+    /// the whole URL including the query is matched, and a pattern without `*` is a substring.
+    #[test]
+    fn wait_url_globs_match_the_full_url() {
+        let m = route_url_matches;
+        assert!(m("**/items/7/", "https://shop.example.test/items/7/"));
+        assert!(!m("**/items/7/", "https://shop.example.test/items/8/"));
+        assert!(
+            !m("**/items/7/", "https://shop.example.test/items/7/?x=1"),
+            "anchored at the end"
+        );
+        assert!(m("**/items/7/*", "https://shop.example.test/items/7/?x=1"));
+        assert!(m(
+            "https://shop.example.test/**",
+            "https://shop.example.test/items/7/"
+        ));
+        assert!(
+            m("/items/7", "https://shop.example.test/items/7/"),
+            "no wildcard: substring"
+        );
+        assert!(!m(
+            "https://other.example.test/**",
+            "https://shop.example.test/items/7/"
+        ));
+    }
+
     #[test]
     fn wait_without_a_caller_timeout_fails_fast_only_on_a_settled_quiet_page() {
         use std::time::Duration as D;

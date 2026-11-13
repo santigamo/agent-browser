@@ -1,3 +1,4 @@
+// Added in the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0); see CHANGES-FORK.md.
 // Code mode, part 1 of 3: console capture and the script's log buffer.
 //
 // console.log is capped while it is collected, not only when the output is printed: a loop that

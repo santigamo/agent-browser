@@ -1,3 +1,9 @@
+> **This is a fork, not the official package.** It is a fork of [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) v0.43.0, versioned `0.43.0-duel.1`, made for the browser-duel comparison. It is not published to npm or Homebrew under the name `agent-browser`, it is not supported by Vercel, and `npm install -g agent-browser` installs the official package, not this one. Build this fork from source with `cargo build --release --manifest-path cli/Cargo.toml`.
+>
+> What changed: `agent-browser run` (multi-step JavaScript scripts with Playwright-style locators), `fill` for date, time, color and range inputs, open shadow roots in CSS targets, `snapshot --find`, `--hidden-text` and an interactive item cap, head and tail output caps with `--offset`, `batch` that stops at the first error and takes `--snapshot`, a `wait` that fails early on a settled page, a `click` that reaches hidden checkboxes through their labels, a bounded `open` and `wait --url`, and an MCP server whose default profile leads with `agent_browser_run`. Several of these change a default of the upstream CLI.
+>
+> [CHANGES-FORK.md](CHANGES-FORK.md) lists every modified file and every changed default, and how to restore the upstream behavior of each (`AGENT_BROWSER_UPSTREAM_DEFAULTS`). The code is under the same Apache-2.0 license as upstream; see [LICENSE](LICENSE).
+
 # agent-browser
 
 Browser automation for AI agents: open pages, read them as an accessibility tree, and act on elements from the shell.

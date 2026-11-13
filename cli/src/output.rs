@@ -1,3 +1,4 @@
+// Modified for the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0, section 4(b)); see CHANGES-FORK.md.
 use std::sync::OnceLock;
 
 use crate::color;
@@ -47,7 +48,9 @@ fn text_limit(opts: &OutputOptions, stdout_is_terminal: bool) -> Option<usize> {
     match opts.max_output {
         Some(0) => None,
         Some(n) => Some(n),
-        None if stdout_is_terminal && !opts.json => Some(DEFAULT_TEXT_CAP),
+        None if stdout_is_terminal && !opts.json && !crate::fork::restores("text-cap") => {
+            Some(DEFAULT_TEXT_CAP)
+        }
         None => None,
     }
 }

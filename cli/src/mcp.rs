@@ -1,3 +1,4 @@
+// Modified for the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0, section 4(b)); see CHANGES-FORK.md.
 //! Stdio MCP server for exposing agent-browser to MCP clients.
 //!
 //! The server keeps stdout exclusively for newline-delimited JSON-RPC

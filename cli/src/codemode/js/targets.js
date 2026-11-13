@@ -1,3 +1,4 @@
+// Added in the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0); see CHANGES-FORK.md.
 // Code mode: what a step's target may be, and how it is resolved.
 //
 // A target is a CSS selector or an @ref, passed to the command as it is; or a Playwright-style

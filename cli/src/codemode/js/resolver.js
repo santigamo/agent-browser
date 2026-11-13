@@ -1,3 +1,4 @@
+// Added in the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0); see CHANGES-FORK.md.
 // Code mode: the locator resolver. Its source runs in the page (one `eval`), not in QuickJS.
 //
 // resolver(spec, L) finds the elements a locator describes. `L` is the page library of the CLI

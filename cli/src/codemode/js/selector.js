@@ -1,3 +1,4 @@
+// Added in the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0); see CHANGES-FORK.md.
 // Code mode: selector strings.
 //
 // A target is a CSS selector, an @ref, or a Playwright-style selector that this file turns into

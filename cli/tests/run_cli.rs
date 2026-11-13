@@ -1,3 +1,4 @@
+// Added in the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0); see CHANGES-FORK.md.
 #![cfg(all(unix, feature = "codemode"))]
 
 //! `agent-browser run` end to end for scripts that need no browser: how its output is capped,

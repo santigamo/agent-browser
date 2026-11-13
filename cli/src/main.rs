@@ -1,3 +1,4 @@
+// Modified for the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0, section 4(b)); see CHANGES-FORK.md.
 mod browser_security;
 mod ca_bundle;
 mod chat;

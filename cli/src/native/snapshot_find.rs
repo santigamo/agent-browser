@@ -1,3 +1,4 @@
+// Added in the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0); see CHANGES-FORK.md.
 //! `snapshot --find <text>` and `snapshot --hidden-text`: search a rendered snapshot, and read the
 //! text a snapshot leaves out (closed `<details>`, hidden elements).
 
