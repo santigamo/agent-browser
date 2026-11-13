@@ -16,7 +16,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "tags": {
@@ -46,7 +46,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -70,7 +70,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -99,7 +99,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -133,7 +133,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "submitSelector": {
@@ -175,7 +175,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -199,12 +199,12 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           }
@@ -213,7 +213,6 @@
       },
       "name": "agent_browser_back",
       "profiles": [
-        "core",
         "tabs"
       ],
       "title": "Back"
@@ -223,10 +222,11 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Run multiple commands sequentially. Unknown commands and subcommands return errors. Set global flags on the batch invocation or MCP server. Command arguments can contain flag-like text. A batch containing only get cdp-url commands never launches a browser.",
+      "description": "Run several commands in one call, e.g. fill fields, click, then snapshot; stops at the first error. For anything that needs waits, reads or logic, use agent_browser_run. Each command is an argv array like [\"fill\",\"@e1\",\"text\"]. Global flags go on the MCP server. Add \"--snapshot\" to an action to get an interactive snapshot after it. Unknown commands return errors. A batch containing only get cdp-url commands never launches a browser.",
       "inputSchema": {
         "properties": {
           "bail": {
+            "description": "Stop at the first error (default true); false keeps going.",
             "type": "boolean"
           },
           "commands": {
@@ -245,7 +245,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -256,6 +256,7 @@
       },
       "name": "agent_browser_batch",
       "profiles": [
+        "core",
         "debug"
       ],
       "title": "Batch"
@@ -278,7 +279,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "verbose": {
@@ -309,7 +310,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -319,9 +320,7 @@
         "type": "object"
       },
       "name": "agent_browser_check",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Check element"
     },
     {
@@ -347,7 +346,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -357,9 +356,7 @@
         "type": "object"
       },
       "name": "agent_browser_click",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Click element"
     },
     {
@@ -371,7 +368,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -392,7 +389,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -413,7 +410,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -434,7 +431,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "text": {
@@ -466,7 +463,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -490,7 +487,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -518,7 +515,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "target": {
@@ -549,7 +546,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -570,7 +567,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -591,7 +588,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -638,7 +635,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "url": {
@@ -675,7 +672,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "url": {
@@ -712,7 +709,7 @@
             "type": "integer"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -733,7 +730,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -758,7 +755,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -783,7 +780,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -814,7 +811,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -835,7 +832,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "text": {
@@ -859,7 +856,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -880,7 +877,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -913,7 +910,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "threshold": {
@@ -949,7 +946,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -985,7 +982,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "url1": {
@@ -1036,7 +1033,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "webgpu": {
@@ -1068,7 +1065,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1098,7 +1095,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "source": {
@@ -1132,7 +1129,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1157,12 +1154,12 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           }
@@ -1173,9 +1170,7 @@
         "type": "object"
       },
       "name": "agent_browser_eval",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Evaluate JavaScript"
     },
     {
@@ -1191,7 +1186,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "text": {
@@ -1206,9 +1201,7 @@
         "type": "object"
       },
       "name": "agent_browser_fill",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Fill input"
     },
     {
@@ -1252,7 +1245,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "text": {
@@ -1287,7 +1280,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1332,7 +1325,7 @@
             "type": "object"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "timeout": {
@@ -1390,7 +1383,7 @@
             "type": "object"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "timeout": {
@@ -1424,7 +1417,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1449,7 +1442,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1471,12 +1464,12 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           }
@@ -1485,7 +1478,6 @@
       },
       "name": "agent_browser_forward",
       "profiles": [
-        "core",
         "tabs"
       ],
       "title": "Forward"
@@ -1499,7 +1491,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1523,7 +1515,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1554,7 +1546,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1581,7 +1573,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1603,7 +1595,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1626,7 +1618,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1652,7 +1644,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1678,7 +1670,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1704,7 +1696,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1714,9 +1706,7 @@
         "type": "object"
       },
       "name": "agent_browser_get_text",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Get text"
     },
     {
@@ -1728,16 +1718,14 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
         "type": "object"
       },
       "name": "agent_browser_get_title",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Get title"
     },
     {
@@ -1749,16 +1737,14 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
         "type": "object"
       },
       "name": "agent_browser_get_url",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Get URL"
     },
     {
@@ -1774,7 +1760,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1800,7 +1786,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1828,7 +1814,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1850,7 +1836,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1871,7 +1857,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "withDeps": {
@@ -1900,7 +1886,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1926,7 +1912,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1952,7 +1938,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -1974,7 +1960,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "text": {
@@ -2001,7 +1987,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "text": {
@@ -2032,7 +2018,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2060,7 +2046,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2093,7 +2079,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2129,7 +2115,7 @@
             "type": "integer"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "steps": {
@@ -2175,7 +2161,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2202,7 +2188,7 @@
             "type": "number"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2234,7 +2220,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2258,7 +2244,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2282,7 +2268,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2315,7 +2301,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "status": {
@@ -2356,7 +2342,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "url": {
@@ -2383,7 +2369,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "url": {
@@ -2403,7 +2389,7 @@
         "openWorldHint": true,
         "readOnlyHint": false
       },
-      "description": "Launch the browser and optionally navigate to a URL. On macOS, installed browsers are searched in /Applications, then ~/Applications. Set the proxy in the server environment or config; percent-encoded proxy URL credentials are decoded before authentication. On Windows, owned headless Chrome uses a private desktop and its process tree closes with the daemon, including forced termination. Headed browsers use the interactive desktop. Successful navigation responses include WebMCP availability metadata when the page exposes allowed tools. Browser-provider and launch-mutation errors omit response error text and unsupported protocol values.",
+      "description": "Launch the browser and optionally open a URL. To open a page and then act or read, one agent_browser_run script (page.goto) does it in a single call. A load event that never fires ends with a note once the document is parsed. Successful navigation responses include WebMCP availability metadata when the page exposes allowed tools, and the saved flows the page offers.",
       "inputSchema": {
         "properties": {
           "allowedDomains": {
@@ -2424,7 +2410,7 @@
             "type": "array"
           },
           "extraArgs": {
-            "description": "Extra CLI arguments for this command, such as --engine. Flags that change network, file, policy, or host access are rejected.",
+            "description": "Extra CLI flags; ones that change network, file, policy or host access are rejected.",
             "items": {
               "type": "string"
             },
@@ -2450,12 +2436,12 @@
             ]
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           },
@@ -2492,7 +2478,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2542,7 +2528,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2566,7 +2552,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2600,7 +2586,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2628,7 +2614,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2656,7 +2642,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2666,9 +2652,7 @@
         "type": "object"
       },
       "name": "agent_browser_press",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Press key"
     },
     {
@@ -2683,7 +2667,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2707,7 +2691,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2728,7 +2712,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2749,7 +2733,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "url": {
@@ -2783,7 +2767,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2810,7 +2794,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2834,7 +2818,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2861,7 +2845,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2885,7 +2869,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -2913,7 +2897,7 @@
             "type": "array"
           },
           "extraArgs": {
-            "description": "Extra CLI arguments for this command, such as --engine. Flags that change network, file, policy, or host access are rejected.",
+            "description": "Extra CLI flags; ones that change network, file, policy or host access are rejected.",
             "items": {
               "type": "string"
             },
@@ -2948,12 +2932,12 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           },
@@ -3003,7 +2987,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "url": {
@@ -3054,7 +3038,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "url": {
@@ -3082,7 +3066,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3103,12 +3087,12 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           }
@@ -3117,7 +3101,6 @@
       },
       "name": "agent_browser_reload",
       "profiles": [
-        "core",
         "tabs"
       ],
       "title": "Reload"
@@ -3134,7 +3117,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3148,6 +3131,35 @@
         "react"
       ],
       "title": "Remove init script"
+    },
+    {
+      "annotations": {
+        "openWorldHint": true,
+        "readOnlyHint": false
+      },
+      "description": "The default tool: do a whole task (navigate, act, wait, extract) in ONE call. Runs a JavaScript script with a `page` object (calls and targets are listed in the server instructions) and returns only what it returns, after console.log lines. timeoutMs bounds the script. A failing step throws 'step N: page.<call>(...) failed: <reason>' with page context; earlier steps already ran.",
+      "inputSchema": {
+        "properties": {
+          "code": {
+            "description": "Script body; `return` the data the task needs. Example: page.goto('https://example.com'); page.fill('input[name=q]', 'shoes'); page.press('Enter'); page.waitFor('h2 a'); return page.text('h1');",
+            "type": "string"
+          },
+          "session": {
+            "description": "Isolated session name (letters, numbers, - _).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      "name": "agent_browser_run",
+      "profiles": [
+        "core",
+        "debug"
+      ],
+      "title": "Run browser script"
     },
     {
       "annotations": {
@@ -3198,7 +3210,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "threshold": {
@@ -3244,16 +3256,14 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
         "type": "object"
       },
       "name": "agent_browser_scroll",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Scroll page"
     },
     {
@@ -3269,7 +3279,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3295,7 +3305,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "values": {
@@ -3314,9 +3324,7 @@
         "type": "object"
       },
       "name": "agent_browser_select",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Select options"
     },
     {
@@ -3328,7 +3336,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3362,7 +3370,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3383,7 +3391,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3404,7 +3412,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3428,7 +3436,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "username": {
@@ -3459,7 +3467,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3489,7 +3497,7 @@
             "type": "number"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3520,7 +3528,7 @@
             "type": "object"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3559,7 +3567,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3583,7 +3591,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3613,7 +3621,7 @@
             "type": "number"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "width": {
@@ -3663,7 +3671,7 @@
             "type": "array"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3684,7 +3692,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3708,7 +3716,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3725,9 +3733,14 @@
         "openWorldHint": true,
         "readOnlyHint": true
       },
-      "description": "Return an accessibility-tree snapshot with reusable element refs. Presentational iframes use the Iframe role for snapshots and stale-ref recovery. If an action reports that a stale ref cannot be recovered, take a new snapshot and use a fresh ref. Controls with an empty or duplicated accessible name carry a hint=\"...\" read from the DOM after the ref.",
+      "description": "Return an accessibility-tree snapshot with reusable element refs (@eN). Use it when the task text and the page's roles/labels do not make the targets likely (scope it with a selector), then do the rest in one agent_browser_run script with the refs. If a ref is stale, take a new snapshot. Controls with an empty or duplicated accessible name carry a hint=\"...\" read from the DOM after the ref. The interactive list shows the first 300 items and counts the rest.",
       "inputSchema": {
         "properties": {
+          "all": {
+            "default": false,
+            "description": "With interactive, list every item instead of the first 300.",
+            "type": "boolean"
+          },
           "compact": {
             "default": false,
             "description": "Remove empty structural elements, retaining only matching content and its direct ancestors. With interactive:false, retain visible text.",
@@ -3743,9 +3756,18 @@
             "minimum": 0,
             "type": "integer"
           },
+          "find": {
+            "description": "Only lines whose role or name contains this text, with their ancestors; says whether nothing matched or the list was truncated. Searches the whole tree (interactive defaults to false).",
+            "type": "string"
+          },
           "full": {
             "default": false,
             "description": "Force full state while updating the delta baseline.",
+            "type": "boolean"
+          },
+          "hiddenText": {
+            "default": false,
+            "description": "Also return text a snapshot omits (closed details, hidden, display:none), labelled by container; with find, only matches.",
             "type": "boolean"
           },
           "includeUrls": {
@@ -3763,7 +3785,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3788,7 +3810,7 @@
             "type": "integer"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3818,7 +3840,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3839,7 +3861,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3863,7 +3885,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3893,7 +3915,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3921,7 +3943,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3948,7 +3970,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -3972,7 +3994,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "storageType": {
@@ -4006,7 +4028,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "storageType": {
@@ -4040,7 +4062,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "storageType": {
@@ -4076,7 +4098,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -4100,7 +4122,7 @@
             "type": "integer"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -4121,7 +4143,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -4154,7 +4176,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -4178,7 +4200,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "tab": {
@@ -4204,7 +4226,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -4243,7 +4265,7 @@
             "type": "array"
           },
           "extraArgs": {
-            "description": "Extra CLI arguments for this command, such as --engine. Flags that change network, file, policy, or host access are rejected.",
+            "description": "Extra CLI flags; ones that change network, file, policy or host access are rejected.",
             "items": {
               "type": "string"
             },
@@ -4270,12 +4292,12 @@
             ]
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           },
@@ -4301,7 +4323,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "tab": {
@@ -4334,7 +4356,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -4358,7 +4380,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -4379,7 +4401,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -4403,7 +4425,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -4438,7 +4460,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "text": {
@@ -4453,9 +4475,7 @@
         "type": "object"
       },
       "name": "agent_browser_type",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Type text"
     },
     {
@@ -4471,7 +4491,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -4481,9 +4501,7 @@
         "type": "object"
       },
       "name": "agent_browser_uncheck",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Uncheck element"
     },
     {
@@ -4495,7 +4513,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -4528,7 +4546,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -4556,7 +4574,7 @@
             "type": "boolean"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "url": {
@@ -4584,12 +4602,12 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           },
@@ -4619,12 +4637,12 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           },
@@ -4652,7 +4670,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "state": {
@@ -4665,7 +4683,7 @@
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           },
@@ -4681,9 +4699,7 @@
         "type": "object"
       },
       "name": "agent_browser_wait_for_load",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Wait for load state"
     },
     {
@@ -4699,7 +4715,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "state": {
@@ -4714,7 +4730,7 @@
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           },
@@ -4730,9 +4746,7 @@
         "type": "object"
       },
       "name": "agent_browser_wait_for_selector",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Wait for selector"
     },
     {
@@ -4744,7 +4758,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "text": {
@@ -4752,7 +4766,7 @@
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           },
@@ -4768,9 +4782,7 @@
         "type": "object"
       },
       "name": "agent_browser_wait_for_text",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Wait for text"
     },
     {
@@ -4782,12 +4794,12 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           },
@@ -4823,12 +4835,12 @@
             "type": "integer"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "timeoutMs": {
             "default": 120000,
-            "description": "Maximum time to wait for this tool call.",
+            "description": "Max ms to wait.",
             "minimum": 1,
             "type": "integer"
           }
@@ -4839,9 +4851,7 @@
         "type": "object"
       },
       "name": "agent_browser_wait_ms",
-      "profiles": [
-        "core"
-      ],
+      "profiles": [],
       "title": "Wait milliseconds"
     },
     {
@@ -4856,7 +4866,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },
@@ -4889,7 +4899,7 @@
             "type": "object"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "tool": {
@@ -4923,7 +4933,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "tool": {
@@ -4950,7 +4960,7 @@
             "type": "string"
           },
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           },
           "waitTimeoutMs": {
@@ -4978,7 +4988,7 @@
       "inputSchema": {
         "properties": {
           "session": {
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores.",
+            "description": "Isolated session name (letters, numbers, - _).",
             "type": "string"
           }
         },

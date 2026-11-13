@@ -548,3 +548,78 @@ fn e2e_wait_for_and_the_action_that_follows_use_the_same_visible_match() {
     );
     assert_eq!(stdout(&out).trim(), "visible");
 }
+
+// ---------------------------------------------------------------------------
+// The MCP run tool
+// ---------------------------------------------------------------------------
+
+impl Fixture {
+    /// `agent-browser mcp call agent_browser_run <arguments>` against this fixture's session.
+    fn mcp_run(&self, mut arguments: Value) -> Value {
+        arguments["session"] = Value::String("run-test".into());
+        let root = self.0.path();
+        let output = Command::new(env!("CARGO_BIN_EXE_agent-browser"))
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .env("HOME", root)
+            .env("USERPROFILE", root)
+            .env("TMPDIR", root)
+            .env("AGENT_BROWSER_SOCKET_DIR", root.join("s"))
+            .env("NO_COLOR", "1")
+            .current_dir(root)
+            .args(["mcp", "call", "agent_browser_run", &arguments.to_string()])
+            .output()
+            .unwrap();
+        serde_json::from_slice(&output.stdout).unwrap_or_else(|e| panic!("{e}: {output:?}"))
+    }
+}
+
+#[test]
+fn the_mcp_run_tool_returns_the_script_text_alone_and_honors_a_requested_cap() {
+    let f = Fixture::new();
+    let result = f.mcp_run(serde_json::json!({ "code": "return 'hello ' + (6 * 7);" }));
+    assert_eq!(result["isError"], false, "{result}");
+    assert_eq!(result["content"][0]["text"], "hello 42");
+    assert!(result.get("structuredContent").is_none(), "{result}");
+    // whole by default, capped only when the caller passes --max-output in extraArgs
+    let whole = f.mcp_run(serde_json::json!({ "code": "return 'z'.repeat(20000);" }));
+    assert_eq!(whole["content"][0]["text"].as_str().unwrap().len(), 20_000);
+    let capped = f.mcp_run(serde_json::json!({
+        "code": "return 'HEAD' + 'z'.repeat(20000) + 'TAIL';",
+        "extraArgs": ["--max-output", "200"],
+    }));
+    let text = capped["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.starts_with("HEAD") && text.ends_with("TAIL") && text.len() < 600,
+        "{}",
+        text.len()
+    );
+    // a failing script is an error result with the step message as text
+    let failed = f.mcp_run(serde_json::json!({ "code": "throw new Error('nope');" }));
+    assert_eq!(failed["isError"], true, "{failed}");
+    assert!(failed["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("nope"));
+}
+
+#[test]
+fn the_mcp_timeout_bounds_the_script() {
+    let f = Fixture::new();
+    let started = std::time::Instant::now();
+    let result =
+        f.mcp_run(serde_json::json!({ "code": "sleep(60000); return 1;", "timeoutMs": 6000 }));
+    assert_eq!(result["isError"], true, "{result}");
+    assert!(
+        result["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("script timed out after 3000 ms"),
+        "{result}"
+    );
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(8),
+        "{:?}",
+        started.elapsed()
+    );
+}

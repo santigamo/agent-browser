@@ -354,10 +354,15 @@ fn line_from_stack(stack: &str) -> Option<u32> {
     parts.next()?.parse().ok()
 }
 
-/// `agent-browser run <file|->`: reads the script, runs it and prints the outcome like any other
+/// `agent-browser run <file|-> [--timeout <ms>]`: reads the script, runs it and prints the outcome like any other
 /// command: page text goes through the same cap and content boundaries, `--json` prints the usual
 /// `{success, data, error}`. Returns the exit status.
-pub fn run_file(flags: &Flags, daemon_opts: &DaemonOptions, file: &str) -> i32 {
+pub fn run_file(
+    flags: &Flags,
+    daemon_opts: &DaemonOptions,
+    file: &str,
+    timeout_ms: Option<u64>,
+) -> i32 {
     let mut script = String::new();
     let read = if file == "-" {
         std::io::stdin().read_to_string(&mut script).map(|_| ())
@@ -373,7 +378,10 @@ pub fn run_file(flags: &Flags, daemon_opts: &DaemonOptions, file: &str) -> i32 {
         }
         return 1;
     }
-    let RunOutcome { text, ok } = run_script(&script, flags, daemon_opts);
+    let RunOutcome { text, ok } = match timeout_ms {
+        Some(ms) => run_script_within(&script, flags, daemon_opts, ms),
+        None => run_script(&script, flags, daemon_opts),
+    };
     let opts = OutputOptions::from_flags(flags);
     if !ok {
         if flags.json {

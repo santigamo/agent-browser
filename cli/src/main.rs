@@ -1934,7 +1934,8 @@ fn main() {
     // policy) as batch items.
     if cmd.get("action").and_then(|v| v.as_str()) == Some("run") {
         let file = cmd.get("file").and_then(|v| v.as_str()).unwrap_or("-");
-        exit(run_script_command(&flags, &daemon_opts, file));
+        let timeout_ms = cmd.get("timeoutMs").and_then(|v| v.as_u64());
+        exit(run_script_command(&flags, &daemon_opts, file, timeout_ms));
     }
 
     // Handle batch command: from args or stdin
@@ -2251,12 +2252,22 @@ fn run_batch(
 
 /// `agent-browser run <file|->`, or the error when this build has no code mode.
 #[cfg(feature = "codemode")]
-fn run_script_command(flags: &Flags, daemon_opts: &DaemonOptions, file: &str) -> i32 {
-    codemode::run_file(flags, daemon_opts, file)
+fn run_script_command(
+    flags: &Flags,
+    daemon_opts: &DaemonOptions,
+    file: &str,
+    timeout_ms: Option<u64>,
+) -> i32 {
+    codemode::run_file(flags, daemon_opts, file, timeout_ms)
 }
 
 #[cfg(not(feature = "codemode"))]
-fn run_script_command(flags: &Flags, _daemon_opts: &DaemonOptions, _file: &str) -> i32 {
+fn run_script_command(
+    flags: &Flags,
+    _daemon_opts: &DaemonOptions,
+    _file: &str,
+    _timeout_ms: Option<u64>,
+) -> i32 {
     let message =
         "this build of agent-browser has no code mode (built without the `codemode` feature)";
     if flags.json {

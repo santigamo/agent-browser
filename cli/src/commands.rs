@@ -2175,14 +2175,38 @@ fn parse_command_inner(
 
         // === Code mode: run a JS script of many steps in one call ===
         "run" => {
+            const RUN_USAGE: &str = "run <script.js|-> [--timeout <ms>]";
+            let mut rest = rest.clone();
+            // `--timeout <ms>` is the script's whole time budget (default: AGENT_BROWSER_RUN_TIMEOUT_MS,
+            // else 120000). The MCP server sets it from its `timeoutMs`.
+            let mut timeout_ms: Option<u64> = None;
+            if let Some(idx) = rest.iter().position(|&s| s == "--timeout") {
+                let raw = rest
+                    .get(idx + 1)
+                    .ok_or_else(|| ParseError::MissingArguments {
+                        context: "run --timeout".to_string(),
+                        usage: RUN_USAGE,
+                    })?;
+                timeout_ms = Some(raw.parse::<u64>().ok().filter(|ms| *ms > 0).ok_or_else(
+                    || ParseError::InvalidValue {
+                        message: format!("--timeout expects a positive number in ms, got '{raw}'"),
+                        usage: RUN_USAGE,
+                    },
+                )?);
+                rest.drain(idx..=idx + 1);
+            }
             let file = rest.iter().find(|a| !a.starts_with("--")).copied();
             let Some(file) = file else {
                 return Err(ParseError::MissingArguments {
                     context: "run".to_string(),
-                    usage: "run <script.js|->",
+                    usage: RUN_USAGE,
                 });
             };
-            Ok(json!({ "id": id, "action": "run", "file": file }))
+            let mut cmd = json!({ "id": id, "action": "run", "file": file });
+            if let Some(ms) = timeout_ms {
+                cmd["timeoutMs"] = json!(ms);
+            }
+            Ok(cmd)
         }
 
         // === Batch ===
@@ -5648,6 +5672,10 @@ pub(crate) mod tests {
         let cmd = parse_command(&args("run -"), &default_flags()).unwrap();
         assert_eq!(cmd["file"], "-");
         assert!(parse_command(&args("run"), &default_flags()).is_err());
+        let cmd = parse_command(&args("run - --timeout 5000"), &default_flags()).unwrap();
+        assert_eq!(cmd["file"], "-");
+        assert_eq!(cmd["timeoutMs"], 5000);
+        assert!(parse_command(&args("run - --timeout 0"), &default_flags()).is_err());
     }
 
     #[test]

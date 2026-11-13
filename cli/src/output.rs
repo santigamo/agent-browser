@@ -4193,7 +4193,7 @@ Examples:
             r##"
 agent-browser run - Run a multi-step JavaScript script in one call (code mode)
 
-Usage: agent-browser run <file.js>
+Usage: agent-browser run <file.js> [--timeout <ms>]
        agent-browser run - <<'JS' ... JS
 
 Each page.* call is an ordinary command (same parser, daemon, refs and
@@ -4218,8 +4218,9 @@ N counts page.* calls; earlier steps have already run. A step the daemon holds
 for confirmation (an action policy or --confirm-actions) fails and names the
 confirm id; nothing ran. Exit status 1 on failure.
 
-AGENT_BROWSER_RUN_TIMEOUT_MS bounds the whole script (default 120000). The
-bound is hard: sleeps, command timeouts, socket reads and retries all stop at it.
+--timeout <ms> or AGENT_BROWSER_RUN_TIMEOUT_MS bounds the whole script (default
+120000). The bound is hard: sleeps, command timeouts, socket reads and retries
+all stop at it.
 
 The returned text honors --max-output (head and tail kept), --offset and
 --content-boundaries like any page text; --json prints {success, data, error}

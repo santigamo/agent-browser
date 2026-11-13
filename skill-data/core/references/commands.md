@@ -546,7 +546,9 @@ The default tools profile is `core`, which keeps MCP context small for everyday 
 
 Profiles:
 
-- `core` - Default. Navigation, snapshots, interaction, waits, reads, screenshots, JavaScript eval, close, tab basics, and profile discovery
+- `core` - Default. Multi-step scripts (`agent_browser_run`), batch, navigation, snapshots, reads, screenshots, tab basics, saved flows, close, and profile discovery (`AGENT_BROWSER_UPSTREAM_DEFAULTS=mcp-profile` restores the upstream default: single-step tools instead of `run` and `batch`)
+- `minimal` - `run`, snapshot, open, screenshot, tab basics, and close
+- `actions` - One tool per single step: click, fill, type, press, check, select, scroll, waits, get text/url/title, back/forward/reload, JavaScript eval (`--tools core,actions` is the upstream default plus `run`)
 - `network` - Network routes, request inspection, HAR, headers, credentials, offline
 - `state` - Cookies, storage, auth, saved state, sessions, profiles, skills
 - `debug` - Console/errors, tracing, profiling, recording, a11y audit, clipboard, plugins, doctor, dashboard, install, upgrade, chat, diff, batch, confirm/deny
@@ -555,22 +557,18 @@ Profiles:
 - `mobile` - Viewport/device/geolocation/media, touch, swipe, mouse, keyboard
 - `all` - Every MCP tool, including the full typed CLI parity surface
 
-Common tools include:
+Core tools include:
 
-- `agent_browser_tools_profiles`
-- `agent_browser_open`
+- `agent_browser_run`
 - `agent_browser_snapshot`
-- `agent_browser_click`
-- `agent_browser_fill`
-- `agent_browser_type`
-- `agent_browser_press`
-- `agent_browser_wait_for_selector`
+- `agent_browser_batch`
+- `agent_browser_open`
+- `agent_browser_read`
 - `agent_browser_screenshot`
-- `agent_browser_get_url`
-- `agent_browser_eval`
 - `agent_browser_close`
+- `agent_browser_tools_profiles`
 
-Tool calls use the same config files and environment variables as the CLI by default. Each tool accepts typed arguments plus `extraArgs` for per-command options and display or emulation flags such as `--engine`; `extraArgs` cannot set `--config` or global flags that change network, file, policy, or host access. Set host-wide options in the MCP server's environment or selected config. The typed `allowedDomains` argument is rejected when the server's environment or selected config already sets allowed domains. The common `allowedDomains` array maps to `--allowed-domains` and activates the same WebRTC containment and launch-mode restrictions. Tool discovery is paginated and includes read-only/open-world annotations so modern MCP clients can load the large typed surface incrementally. Use the `session` tool argument or `AGENT_BROWSER_SESSION` to isolate browser state. Undeclared argument keys are rejected with an invalid-params error that names them. The typed `idleTimeout` argument maps to `--idle-timeout`. The typed `relaunch` argument maps to `--relaunch`; `open` and `tab_new` list it in their schema.
+Tool calls use the same config files and environment variables as the CLI by default. `agent_browser_run` takes the script as `code` and uses `timeoutMs` as the script's time budget; its result is the script's text alone. Page text is returned whole unless `extraArgs` carries `--max-output` (head and tail kept) or `--offset`. Each tool accepts typed arguments plus `extraArgs` for per-command options and display or emulation flags such as `--engine`; `extraArgs` cannot set `--config` or global flags that change network, file, policy, or host access. Set host-wide options in the MCP server's environment or selected config. The typed `allowedDomains` argument is rejected when the server's environment or selected config already sets allowed domains. The common `allowedDomains` array maps to `--allowed-domains` and activates the same WebRTC containment and launch-mode restrictions. Tool discovery is paginated and includes read-only/open-world annotations so modern MCP clients can load the large typed surface incrementally. Use the `session` tool argument or `AGENT_BROWSER_SESSION` to isolate browser state. Undeclared argument keys are rejected with an invalid-params error that names them. The typed `idleTimeout` argument maps to `--idle-timeout`. The typed `relaunch` argument maps to `--relaunch`; `open` and `tab_new` list it in their schema.
 
 For eve agents, mount the `@agent-browser/eve` extension instead of hand-writing browser tools. It adds namespaced tools such as `browser__open`, `browser__snapshot`, `browser__click`, `browser__fill`, `browser__find`, and `browser__screenshot`, backed by agent-browser inside the eve sandbox. The sandbox bootstrap helpers (`installAgentBrowser`, `agentBrowserRevalidationKey`) ship in `@agent-browser/eve/sandbox`.
 

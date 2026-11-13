@@ -139,6 +139,7 @@ const TOOL_DIFF_SNAPSHOT: &str = "agent_browser_diff_snapshot";
 const TOOL_DIFF_SCREENSHOT: &str = "agent_browser_diff_screenshot";
 const TOOL_DIFF_URL: &str = "agent_browser_diff_url";
 const TOOL_BATCH: &str = "agent_browser_batch";
+const TOOL_RUN: &str = "agent_browser_run";
 const TOOL_REACT_TREE: &str = "agent_browser_react_tree";
 const TOOL_REACT_INSPECT: &str = "agent_browser_react_inspect";
 const TOOL_REACT_RENDERS_START: &str = "agent_browser_react_renders_start";
@@ -225,6 +226,8 @@ struct McpConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ToolProfile {
     Core,
+    Minimal,
+    Actions,
     Network,
     State,
     Debug,
@@ -239,6 +242,8 @@ impl ToolProfile {
     fn parse(name: &str) -> Option<Self> {
         match name {
             "core" | "default" => Some(Self::Core),
+            "minimal" | "min" => Some(Self::Minimal),
+            "actions" | "interact" => Some(Self::Actions),
             "network" => Some(Self::Network),
             "state" | "storage" | "auth" => Some(Self::State),
             "debug" | "diagnostics" => Some(Self::Debug),
@@ -254,6 +259,8 @@ impl ToolProfile {
     fn name(self) -> &'static str {
         match self {
             Self::Core => "core",
+            Self::Minimal => "minimal",
+            Self::Actions => "actions",
             Self::Network => "network",
             Self::State => "state",
             Self::Debug => "debug",
@@ -267,7 +274,10 @@ impl ToolProfile {
 
     fn description(self) -> &'static str {
         match self {
-            Self::Core => "Everyday browser automation with navigation, snapshots, common interaction, waits, screenshots, basic reads, tab basics, JavaScript eval, close, and profile discovery.",
+            Self::Core if crate::fork::restores("mcp-profile") => "Everyday browser automation with navigation, snapshots, common interaction, waits, screenshots, basic reads, tab basics, JavaScript eval, close, and profile discovery.",
+            Self::Core => "Everyday browser automation: multi-step scripts (run), batch, navigation, snapshots, reads, screenshots, tab basics, saved flows, close, and profile discovery.",
+            Self::Minimal => "Smallest catalog: run (whole task in one script), snapshot, open, screenshot, tab basics, close.",
+            Self::Actions => "One tool per single step: click, fill, type, press, check, select, scroll, waits, get text/url/title, back/forward/reload, and JavaScript eval. run and batch cover these in one call.",
             Self::Network => "Network interception, request inspection, HAR capture, headers, credentials, and offline mode.",
             Self::State => "Cookies, storage, auth profiles, saved browser state, sessions, Chrome profiles, and bundled skills.",
             Self::Debug => "Console/errors, highlighting, DevTools, tracing, profiling, accessibility audits, PDF, downloads/uploads, recording, clipboard, plugin registry and plugin command.run, doctor, dashboard, install, upgrade, and chat.",
@@ -281,7 +291,10 @@ impl ToolProfile {
 
     fn tools(self) -> &'static [&'static str] {
         match self {
+            Self::Core if crate::fork::restores("mcp-profile") => UPSTREAM_CORE_PROFILE_TOOLS,
             Self::Core => CORE_PROFILE_TOOLS,
+            Self::Minimal => MINIMAL_PROFILE_TOOLS,
+            Self::Actions => ACTIONS_PROFILE_TOOLS,
             Self::Network => NETWORK_PROFILE_TOOLS,
             Self::State => STATE_PROFILE_TOOLS,
             Self::Debug => DEBUG_PROFILE_TOOLS,
@@ -341,7 +354,69 @@ impl Default for McpConfig {
     }
 }
 
+/// The default profile of this fork: the whole task as one `run` script, plus a snapshot, reads,
+/// screenshots, tab basics, saved flows and close. The single-step action tools live in `actions`:
+/// with them in the default list, agents call them one step per turn instead of writing one `run`
+/// script, which costs turns and tokens. `AGENT_BROWSER_UPSTREAM_DEFAULTS=mcp-profile` restores
+/// the upstream list below.
 const CORE_PROFILE_TOOLS: &[&str] = &[
+    TOOL_RUN,
+    TOOL_SNAPSHOT,
+    TOOL_BATCH,
+    TOOL_OPEN,
+    TOOL_READ,
+    TOOL_SCREENSHOT,
+    TOOL_TAB_NEW,
+    TOOL_TAB_LIST,
+    TOOL_TAB_SWITCH,
+    TOOL_TAB_CLOSE,
+    TOOL_FLOW_LIST,
+    TOOL_FLOW_RUN,
+    TOOL_FLOW_STEPS,
+    TOOL_FLOW_SAVE,
+    TOOL_CLOSE,
+    TOOL_TOOLS_PROFILES,
+];
+
+/// One tool per single step, what the upstream default profile carried.
+const ACTIONS_PROFILE_TOOLS: &[&str] = &[
+    TOOL_BACK,
+    TOOL_FORWARD,
+    TOOL_RELOAD,
+    TOOL_CLICK,
+    TOOL_FILL,
+    TOOL_TYPE,
+    TOOL_PRESS,
+    TOOL_CHECK,
+    TOOL_UNCHECK,
+    TOOL_SELECT,
+    TOOL_SCROLL,
+    TOOL_WAIT_MS,
+    TOOL_WAIT_FOR_SELECTOR,
+    TOOL_WAIT_FOR_TEXT,
+    TOOL_WAIT_FOR_LOAD,
+    TOOL_GET_TEXT,
+    TOOL_GET_URL,
+    TOOL_GET_TITLE,
+    TOOL_EVAL,
+];
+
+/// The smallest useful catalog: the whole task in one `run` script, plus a snapshot for pages whose
+/// targets cannot be guessed, navigation, screenshots, tab basics and close.
+const MINIMAL_PROFILE_TOOLS: &[&str] = &[
+    TOOL_RUN,
+    TOOL_SNAPSHOT,
+    TOOL_OPEN,
+    TOOL_SCREENSHOT,
+    TOOL_TAB_NEW,
+    TOOL_TAB_LIST,
+    TOOL_TAB_SWITCH,
+    TOOL_TAB_CLOSE,
+    TOOL_CLOSE,
+];
+
+/// The default profile of upstream agent-browser v0.43.0.
+const UPSTREAM_CORE_PROFILE_TOOLS: &[&str] = &[
     TOOL_TOOLS_PROFILES,
     TOOL_OPEN,
     TOOL_FLOW_LIST,
@@ -451,6 +526,7 @@ const DEBUG_PROFILE_TOOLS: &[&str] = &[
     TOOL_DIFF_SCREENSHOT,
     TOOL_DIFF_URL,
     TOOL_BATCH,
+    TOOL_RUN,
     TOOL_CONFIRM,
     TOOL_DENY,
     TOOL_CONNECT,
@@ -773,12 +849,45 @@ fn initialize_result(params: Option<&Value>, config: &McpConfig) -> Value {
             "title": "agent-browser",
             "version": env!("CARGO_PKG_VERSION")
         },
-        "instructions": format!(
-            "Use the typed agent_browser_* tools to control a browser. Active MCP tools profile(s): {}. Prefer agent_browser_snapshot after navigation to obtain stable element refs before clicking or typing. When a navigation result lists saved flows that match the task, call agent_browser_flow_run instead of driving the page. Use agent_browser_tools_profiles to see available startup profiles. {}",
-            config.profile_names().join(", "),
-            SHARED_ARGUMENTS_INSTRUCTIONS
-        )
+        "instructions": instructions_for(config)
     })
+}
+
+/// What the server tells the model first. It names only tools the active profiles enable and
+/// states only what is true of them: with `agent_browser_run` it leads with the one-script
+/// workflow, without it the upstream wording applies.
+fn instructions_for(config: &McpConfig) -> String {
+    let allows = |tool: &str| config.allows(tool);
+    let mut text = String::new();
+    if allows(TOOL_RUN) {
+        text.push_str(MCP_RUN_INSTRUCTIONS);
+        text.push_str(if allows(TOOL_SNAPSHOT) && allows(TOOL_OPEN) {
+            "Guess a target only when the task text or a role/label makes it likely, else agent_browser_snapshot (after agent_browser_open) first. "
+        } else {
+            "Guess a target only when the task text or a role/label makes it likely, else read the page with page.snapshot({interactive: true}) first. "
+        });
+        text.push_str(MCP_RUN_DISCIPLINE);
+        if allows(TOOL_BATCH) {
+            text.push_str("agent_browser_batch runs a few ref actions in one call. ");
+        }
+    } else {
+        text.push_str("Use the typed agent_browser_* tools to control a browser. ");
+        if allows(TOOL_SNAPSHOT) {
+            text.push_str("Prefer agent_browser_snapshot after navigation to obtain stable element refs before clicking or typing. ");
+        }
+        if allows(TOOL_FLOW_RUN) {
+            text.push_str("When a navigation result lists saved flows that match the task, call agent_browser_flow_run instead of driving the page. ");
+        }
+    }
+    text.push_str(&format!(
+        "Active tools profile(s): {}. ",
+        config.profile_names().join(", ")
+    ));
+    if allows(TOOL_TOOLS_PROFILES) {
+        text.push_str("agent_browser_tools_profiles lists the others. ");
+    }
+    text.push_str(SHARED_ARGUMENTS_INSTRUCTIONS);
+    text
 }
 
 fn tools_for_config(config: &McpConfig) -> Vec<Value> {
@@ -795,6 +904,8 @@ fn tools_for_config(config: &McpConfig) -> Vec<Value> {
 fn tool_profile_names() -> Vec<&'static str> {
     [
         ToolProfile::Core,
+        ToolProfile::Minimal,
+        ToolProfile::Actions,
         ToolProfile::Network,
         ToolProfile::State,
         ToolProfile::Debug,
@@ -812,6 +923,8 @@ fn tool_profile_names() -> Vec<&'static str> {
 fn tool_profile_summaries() -> Vec<Value> {
     [
         ToolProfile::Core,
+        ToolProfile::Minimal,
+        ToolProfile::Actions,
         ToolProfile::Network,
         ToolProfile::State,
         ToolProfile::Debug,
@@ -841,6 +954,13 @@ fn tool_profile_summaries() -> Vec<Value> {
 fn tools() -> Vec<Value> {
     let mut tools = vec![
         tool(
+            TOOL_RUN,
+            "Run browser script",
+            "The default tool: do a whole task (navigate, act, wait, extract) in ONE call. Runs a JavaScript script with a `page` object (calls and targets are listed in the server instructions) and returns only what it returns, after console.log lines. timeoutMs bounds the script. A failing step throws 'step N: page.<call>(...) failed: <reason>' with page context; earlier steps already ran.",
+            json!({ "code": { "type": "string", "description": "Script body; `return` the data the task needs. Example: page.goto('https://example.com'); page.fill('input[name=q]', 'shoes'); page.press('Enter'); page.waitFor('h2 a'); return page.text('h1');" } }),
+            &["code"],
+        ),
+        tool(
             TOOL_TOOLS_PROFILES,
             "MCP tool profiles",
             "List MCP startup tool profiles and how to enable them.",
@@ -850,7 +970,7 @@ fn tools() -> Vec<Value> {
         tool(
             TOOL_OPEN,
             "Open page",
-            "Launch the browser and optionally navigate to a URL. On macOS, installed browsers are searched in /Applications, then ~/Applications. Set the proxy in the server environment or config; percent-encoded proxy URL credentials are decoded before authentication. On Windows, owned headless Chrome uses a private desktop and its process tree closes with the daemon, including forced termination. Headed browsers use the interactive desktop. Successful navigation responses include WebMCP availability metadata when the page exposes allowed tools. Browser-provider and launch-mutation errors omit response error text and unsupported protocol values.",
+            "Launch the browser and optionally open a URL. To open a page and then act or read, one agent_browser_run script (page.goto) does it in a single call. A load event that never fires ends with a note once the document is parsed. Successful navigation responses include WebMCP availability metadata when the page exposes allowed tools, and the saved flows the page offers.",
             json!({
                 "url": { "type": "string", "description": "URL to open. Omit to launch about:blank." },
                 "headed": { "type": "boolean", "description": "Show the browser window. Explicit true/false overrides AGENT_BROWSER_HEADED and config; omit to use those defaults." },
@@ -961,13 +1081,16 @@ fn tools() -> Vec<Value> {
         tool(
             TOOL_SNAPSHOT,
             "Snapshot page",
-            "Return an accessibility-tree snapshot with reusable element refs. Presentational iframes use the Iframe role for snapshots and stale-ref recovery. If an action reports that a stale ref cannot be recovered, take a new snapshot and use a fresh ref. Controls with an empty or duplicated accessible name carry a hint=\"...\" read from the DOM after the ref.",
+            "Return an accessibility-tree snapshot with reusable element refs (@eN). Use it when the task text and the page's roles/labels do not make the targets likely (scope it with a selector), then do the rest in one agent_browser_run script with the refs. If a ref is stale, take a new snapshot. Controls with an empty or duplicated accessible name carry a hint=\"...\" read from the DOM after the ref. The interactive list shows the first 300 items and counts the rest.",
             json!({
                 "interactive": { "type": "boolean", "default": true, "description": "Only include interactive elements." },
                 "compact": { "type": "boolean", "default": false, "description": "Remove empty structural elements, retaining only matching content and its direct ancestors. With interactive:false, retain visible text." },
                 "depth": { "type": "integer", "minimum": 0, "description": "Limit tree depth." },
                 "selector": { "type": "string", "description": "Scope the snapshot to a CSS selector." },
                 "includeUrls": { "type": "boolean", "default": false, "description": "Include href URLs on links." },
+                "find": { "type": "string", "description": "Only lines whose role or name contains this text, with their ancestors; says whether nothing matched or the list was truncated. Searches the whole tree (interactive defaults to false)." },
+                "hiddenText": { "type": "boolean", "default": false, "description": "Also return text a snapshot omits (closed details, hidden, display:none), labelled by container; with find, only matches." },
+                "all": { "type": "boolean", "default": false, "description": "With interactive, list every item instead of the first 300." },
                 "delta": { "type": "boolean", "default": false, "description": "Return full state once, then unchanged or bounded structural deltas. Apply changes to refs and treeChange (zero-based startLine, deleteCount, lines) to the previous tree." },
                 "full": { "type": "boolean", "default": false, "description": "Force full state while updating the delta baseline." }
             }),
@@ -1775,8 +1898,8 @@ fn parity_tools() -> Vec<Value> {
         tool(
             TOOL_BATCH,
             "Batch",
-            "Run multiple commands sequentially. Unknown commands and subcommands return errors. Set global flags on the batch invocation or MCP server. Command arguments can contain flag-like text. A batch containing only get cdp-url commands never launches a browser.",
-            json!({ "commands": { "type": "array", "items": { "type": "array", "items": { "type": "string" }, "minItems": 1 }, "minItems": 1 }, "bail": { "type": "boolean" }, "omitCommand": { "type": "boolean", "description": "Replace only command arrays with a stable zero-based input index. Does not make output safe for secrets: errors and response data are unchanged; type echoes typed text, and get value/eval may return input values." } }),
+            "Run several commands in one call, e.g. fill fields, click, then snapshot; stops at the first error. For anything that needs waits, reads or logic, use agent_browser_run. Each command is an argv array like [\"fill\",\"@e1\",\"text\"]. Global flags go on the MCP server. Add \"--snapshot\" to an action to get an interactive snapshot after it. Unknown commands return errors. A batch containing only get cdp-url commands never launches a browser.",
+            json!({ "commands": { "type": "array", "items": { "type": "array", "items": { "type": "string" }, "minItems": 1 }, "minItems": 1 }, "bail": { "type": "boolean", "description": "Stop at the first error (default true); false keeps going." }, "omitCommand": { "type": "boolean", "description": "Replace only command arrays with a stable zero-based input index. Does not make output safe for secrets: errors and response data are unchanged; type echoes typed text, and get value/eval may return input values." } }),
             &["commands"],
         ),
         tool(
@@ -2160,7 +2283,7 @@ fn shared_property(key: &str) -> Value {
     match key {
         "session" => json!({
             "type": "string",
-            "description": "Isolated browser session name: Unicode letters, numbers, hyphens, and underscores."
+            "description": "Isolated session name (letters, numbers, - _)."
         }),
         "restore" => json!({
             "oneOf": [{ "type": "boolean" }, { "type": "string" }],
@@ -2183,19 +2306,30 @@ fn shared_property(key: &str) -> Value {
         "extraArgs" => json!({
             "type": "array",
             "items": { "type": "string" },
-            "description": "Extra CLI arguments for this command, such as --engine. Flags that change network, file, policy, or host access are rejected."
+            "description": "Extra CLI flags; ones that change network, file, policy or host access are rejected."
         }),
         "timeoutMs" => json!({
             "type": "integer",
             "minimum": 1,
             "default": DEFAULT_TIMEOUT_MS,
-            "description": "Maximum time to wait for this tool call."
+            "description": "Max ms to wait."
         }),
         _ => unreachable!("shared argument {key} is not advertised"),
     }
 }
 
-const SHARED_ARGUMENTS_INSTRUCTIONS: &str = "Every tool accepts these optional arguments even when its schema does not list them: session (isolated browser session name), restore (true or a key; restores and auto-saves browser state when the call launches the browser), allowedDomains (domain patterns that restrict browser and read traffic when the call launches the browser; also disables RTCPeerConnection in Chromium sessions, and is rejected when the server environment or config already sets allowed domains), capture (set to flow to record the session so flow steps and flow save can turn it into a reusable flow, when the call launches the browser), extraArgs (extra CLI arguments such as --engine; global flags that change network, file, policy, or host access, such as --allowed-domains, --executable-path, --args, and --config, are rejected, so set those in the MCP server environment or config), timeoutMs (positive integer, maximum milliseconds to wait for the tool call), namespace (isolates daemon sockets and restore-state directories), restoreSave (auto, always, or never), restoreCheckUrl, restoreCheckText, and restoreCheckFn (conditions restored state must satisfy), caCert (path to a CA certificate or PEM bundle for the CLI's HTTPS requests and locally launched Chromium on Linux), useSystemCa (boolean, use the OS trust store for the CLI's HTTPS requests), clearCaCert (boolean, clear CA trust retained by the session; cannot be combined with caCert), idleTimeout (such as 30s, 5m, 1h, or milliseconds; defaults to 1h, 0 disables idle shutdown), and relaunch (boolean, relaunch the session's browser even when no setting changed).";
+const SHARED_ARGUMENTS_INSTRUCTIONS: &str = "Every tool also accepts these optional arguments, even when its schema omits them: session (isolated browser), timeoutMs, extraArgs (per-command CLI flags; global network, file and policy flags are rejected), and, when the call launches the browser: restore, restoreSave, restoreCheckUrl, restoreCheckText, restoreCheckFn, allowedDomains, capture (flow), caCert, useSystemCa, clearCaCert, idleTimeout, relaunch, namespace.";
+
+/// What a model reads first when `agent_browser_run` is enabled: the one-script default, the page
+/// API and its targets. The sentences about snapshots follow it, then `MCP_RUN_DISCIPLINE`.
+const MCP_RUN_INSTRUCTIONS: &str = "agent-browser drives Chrome. Default: do the task with agent_browser_run, ONE JavaScript script that navigates, acts, waits and returns only what you need. Example: page.goto(url); page.fill('input[name=q]', 'shoes'); page.press('Enter'); page.waitFor('h2 a'); return page.text('main');
+Calls (synchronous): goto back reload click fill type select check uncheck hover press text value attr html count isVisible url title waitFor(css|{text}|{url}|ms) evaluate(fn, ...args) snapshot({interactive: true}) cmd('any CLI command').
+Targets: CSS (a missing one is waited for 5s), @eN refs, or a compatible subset of Playwright locators: page.getByRole('button', {name: 'Send'}), getByText / getByLabel / getByPlaceholder, 'text=Next'. A locator never acts on a hidden element; several visible matches act on the first and report the count (.first()/.nth(i) choose). Unsupported options throw.
+";
+
+const MCP_RUN_DISCIPLINE: &str = "After the FIRST miss (an error, or an empty or off-target result) stop probing: use the error's page context or one scoped snapshot, then ONE script. Never repeat an extraction or navigation without new evidence. Wait only on a state change you observed or one the action clearly causes.
+A failed step reports 'step N: page.<call>(...) failed: <reason>' plus page context; earlier steps ran: rerun only the rest.
+";
 
 /// Levenshtein distance, for suggesting a close argument name.
 fn edit_distance(a: &str, b: &str) -> usize {
@@ -2580,6 +2714,7 @@ fn call_tool(params: Option<&Value>, config: &McpConfig) -> Result<Value, Protoc
         TOOL_DIFF_SCREENSHOT => call_diff_screenshot(arguments),
         TOOL_DIFF_URL => call_diff_url(arguments),
         TOOL_BATCH => call_batch(arguments),
+        TOOL_RUN => call_run(arguments),
         TOOL_REACT_TREE => call_react_tree(arguments),
         TOOL_REACT_INSPECT => call_react_inspect(arguments),
         TOOL_REACT_RENDERS_START => call_react_renders_start(arguments),
@@ -2699,12 +2834,50 @@ fn call_cli_tool(
     let run = run_cli(&cli_args, stdin_body, timeout_ms).map_err(|e| {
         ProtocolError::invalid_params(format!("Failed to run agent-browser: {}", e))
     })?;
-    Ok(tool_result_from_run(run))
+    // Page text is capped only when the caller asked: extraArgs ["--max-output", n] (or the
+    // server's AGENT_BROWSER_MAX_OUTPUT), with ["--offset", n] to page through it. Without either
+    // the result is whole, as it is for the CLI on a pipe.
+    let cap = crate::flags::try_parse_flags(&cli_args)
+        .ok()
+        .filter(|f| f.max_output.is_some() || f.output_offset > 0)
+        .map(|f| (f.max_output, f.output_offset));
+    Ok(tool_result_from_run_capped(run, cap))
+}
+
+/// The share of an MCP call's `timeoutMs` a `run` script may use: it must end, and report, before
+/// the server stops the child at `timeoutMs`.
+fn script_budget(timeout_ms: u64) -> u64 {
+    timeout_ms.saturating_sub(5_000).max(timeout_ms / 2).max(1)
+}
+
+/// `agent_browser_run`: the script goes to `agent-browser run -` on stdin, with `timeoutMs` as its
+/// time budget. A new tool has no upstream result shape to keep, so its result is the script's
+/// text alone (clients that show structuredContent would show it wrapped in JSON).
+fn call_run(arguments: &Value) -> Result<Value, ProtocolError> {
+    let code = required_string(arguments, "code")?;
+    let budget = script_budget(optional_timeout(arguments)?);
+    let mut result = call_cli_tool(
+        arguments,
+        vec![
+            "run".to_string(),
+            "-".to_string(),
+            "--timeout".to_string(),
+            budget.to_string(),
+        ],
+        Some(code),
+    )?;
+    if let Some(object) = result.as_object_mut() {
+        object.remove("structuredContent");
+    }
+    Ok(result)
 }
 
 /// Global flags an MCP caller may pass in extraArgs; every other global flag must come from the server's environment or config.
 const MCP_EXTRA_ARGS_GLOBALS: &[&str] = &[
     "--json",
+    "--snapshot",
+    "--max-output",
+    "--offset",
     "--headed",
     "--webgpu",
     "--no-webmcp",
@@ -3060,11 +3233,16 @@ fn call_snapshot(arguments: &Value) -> Result<Value, ProtocolError> {
 
 fn snapshot_command_args(arguments: &Value) -> Result<Vec<String>, ProtocolError> {
     let mut args = vec!["snapshot".to_string()];
-    if optional_bool(arguments, "interactive")?.unwrap_or(true) {
+    let find = optional_string(arguments, "find")?;
+    // a find searches the visible text too, which an interactive-only tree does not carry
+    if optional_bool(arguments, "interactive")?.unwrap_or(find.is_none()) {
         args.push("-i".to_string());
     }
     if optional_bool(arguments, "compact")?.unwrap_or(false) {
         args.push("-c".to_string());
+    }
+    if optional_bool(arguments, "all")?.unwrap_or(false) {
+        args.push("--all".to_string());
     }
     if optional_bool(arguments, "includeUrls")?.unwrap_or(false) {
         args.push("-u".to_string());
@@ -3076,6 +3254,13 @@ fn snapshot_command_args(arguments: &Value) -> Result<Vec<String>, ProtocolError
     if let Some(selector) = optional_string(arguments, "selector")? {
         args.push("-s".to_string());
         args.push(selector);
+    }
+    if let Some(find) = find {
+        args.push("--find".to_string());
+        args.push(find);
+    }
+    if optional_bool(arguments, "hiddenText")?.unwrap_or(false) {
+        args.push("--hidden-text".to_string());
     }
     if optional_bool(arguments, "delta")?.unwrap_or(false) {
         args.push("--delta".to_string());
@@ -4515,9 +4700,118 @@ fn append_timeout_message(stderr: String, timeout_ms: u64) -> String {
     }
 }
 
-/// Convert CLI output into an MCP tool result.
+/// Smallest share of the character limit a single value of a capped result gets.
+const MIN_JSON_BUDGET: usize = 40;
+
+/// Bounds `value` to about `limit` characters of serialized JSON without changing any type: a
+/// string stays a string (head and tail kept), an array stays an array (a prefix of its items), an
+/// object stays an object (each field capped to its share, the first fields kept when there are
+/// too many), numbers, booleans and null are untouched. The total is bounded, not just each part.
+/// The notes say what was cut, for the caller to show.
+fn cap_json(value: &Value, limit: usize) -> (Value, Vec<String>) {
+    let mut notes = Vec::new();
+    let capped = cap_json_at(value, limit.max(MIN_JSON_BUDGET), "result", &mut notes);
+    (capped, notes)
+}
+
+fn cap_json_at(value: &Value, budget: usize, path: &str, notes: &mut Vec<String>) -> Value {
+    if value.to_string().chars().count() <= budget {
+        return value.clone();
+    }
+    match value {
+        Value::String(s) => {
+            notes.push(format!("{path} was cut to about {budget} characters"));
+            Value::String(crate::output::cap_text(s, Some(budget), 0))
+        }
+        Value::Array(items) => {
+            let mut kept: Vec<Value> = Vec::new();
+            let mut used = 2usize;
+            for item in items {
+                let size = item.to_string().chars().count() + 1;
+                let room = budget.saturating_sub(used);
+                if size <= room {
+                    kept.push(item.clone());
+                    used += size;
+                } else if kept.is_empty() {
+                    kept.push(cap_json_at(item, room.max(MIN_JSON_BUDGET), path, notes));
+                    break;
+                } else {
+                    break;
+                }
+            }
+            if kept.len() < items.len() {
+                notes.push(format!(
+                    "{path}: showing the first {} of {} items",
+                    kept.len(),
+                    items.len()
+                ));
+            }
+            Value::Array(kept)
+        }
+        Value::Object(map) => {
+            let keep = map.len().min((budget / MIN_JSON_BUDGET).max(1));
+            if keep < map.len() {
+                notes.push(format!(
+                    "{path}: showing the first {keep} of {} fields",
+                    map.len()
+                ));
+            }
+            let share = (budget / keep).max(MIN_JSON_BUDGET);
+            let capped = map
+                .iter()
+                .take(keep)
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        cap_json_at(v, share, &format!("{path}.{k}"), notes),
+                    )
+                })
+                .collect();
+            Value::Object(capped)
+        }
+        other => other.clone(),
+    }
+}
+
+/// Applies the caller's `--max-output` / `--offset` to the page text fields (`text`, `html`,
+/// `content`) and the eval `result` of a parsed CLI response, so both the text content and
+/// structuredContent stay bounded.
+fn cap_response_text(parsed: &mut Value, max_output: Option<usize>, offset: usize) {
+    let limit = max_output.filter(|n| *n > 0);
+    let Some(data) = parsed.get_mut("data").and_then(Value::as_object_mut) else {
+        return;
+    };
+    for key in ["text", "html", "content"] {
+        if let Some(Value::String(s)) = data.get_mut(key) {
+            *s = crate::output::cap_text(s, limit, offset);
+        }
+    }
+    let mut notes = Vec::new();
+    if let (Some(limit), Some(result)) = (limit, data.get_mut("result")) {
+        let (capped, cut) = cap_json(result, limit);
+        if !cut.is_empty() {
+            *result = capped;
+            notes = cut;
+        }
+    }
+    if !notes.is_empty() {
+        let note = format!("capped by --max-output: {}", notes.join("; "));
+        parsed["warning"] = Value::String(note);
+    }
+}
+
+/// Convert CLI output into an MCP tool result, with no cap.
+#[cfg(test)]
 fn tool_result_from_run(run: CliRun) -> Value {
-    let parsed = serde_json::from_str::<Value>(run.stdout.trim()).ok();
+    tool_result_from_run_capped(run, None)
+}
+
+/// `tool_result_from_run`, applying `cap` (`--max-output`, `--offset`) to the page text first.
+fn tool_result_from_run_capped(run: CliRun, cap: Option<(Option<usize>, usize)>) -> Value {
+    let mut parsed = serde_json::from_str::<Value>(run.stdout.trim()).ok();
+    if let (Some(p), Some((max_output, offset))) = (parsed.as_mut(), cap) {
+        cap_response_text(p, max_output, offset);
+    }
     let cli_success = parsed
         .as_ref()
         .and_then(|v| v.get("success"))
@@ -4681,7 +4975,8 @@ fn response_text(value: &Value) -> Option<String> {
                 ));
             }
             for key in [
-                "snapshot", "text", "html", "report", "value", "content", "title", "url", "path",
+                "snapshot", "text", "html", "report", "value", "content", "output", "title", "url",
+                "path",
             ] {
                 if let Some(s) = data.get(key).and_then(|v| v.as_str()) {
                     return Some(s.to_string());
@@ -4744,6 +5039,216 @@ fn write_json_line(stdout: &mut io::Stdout, value: &Value) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    fn names_of(config: &McpConfig) -> Vec<String> {
+        tools_for_config(config)
+            .iter()
+            .filter_map(|t| t["name"].as_str().map(String::from))
+            .collect()
+    }
+
+    #[test]
+    fn minimal_and_actions_profiles_split_the_single_step_tools_from_run() {
+        let minimal = names_of(&McpConfig::from_profiles(vec![ToolProfile::Minimal]));
+        assert!(
+            minimal.contains(&TOOL_RUN.to_string()) && minimal.contains(&TOOL_SNAPSHOT.to_string())
+        );
+        assert!(
+            !minimal.contains(&TOOL_CLICK.to_string())
+                && !minimal.contains(&TOOL_BATCH.to_string())
+        );
+        let actions = names_of(&McpConfig::from_profiles(vec![ToolProfile::Actions]));
+        assert!(
+            actions.contains(&TOOL_CLICK.to_string()) && actions.contains(&TOOL_EVAL.to_string())
+        );
+        assert!(!actions.contains(&TOOL_RUN.to_string()));
+        // `--tools core,actions` is the upstream default plus run
+        let both = names_of(&McpConfig::from_profiles(vec![
+            ToolProfile::Core,
+            ToolProfile::Actions,
+        ]));
+        for tool in UPSTREAM_CORE_PROFILE_TOOLS {
+            assert!(both.contains(&tool.to_string()), "{tool}");
+        }
+        assert!(ToolProfile::parse("minimal").is_some() && ToolProfile::parse("actions").is_some());
+    }
+
+    #[test]
+    fn the_upstream_core_profile_has_no_run_tool() {
+        assert!(!UPSTREAM_CORE_PROFILE_TOOLS.contains(&TOOL_RUN));
+        assert!(UPSTREAM_CORE_PROFILE_TOOLS.contains(&TOOL_CLICK));
+    }
+
+    #[test]
+    fn instructions_name_only_the_tools_the_profiles_enable() {
+        let text =
+            |profiles: Vec<ToolProfile>| instructions_for(&McpConfig::from_profiles(profiles));
+        let core = text(vec![ToolProfile::Core]);
+        assert!(core.starts_with(
+            "agent-browser drives Chrome. Default: do the task with agent_browser_run"
+        ));
+        assert!(
+            core.contains("agent_browser_batch runs a few ref actions")
+                && core.contains("agent_browser_snapshot (after agent_browser_open)")
+        );
+        assert!(
+            !core.contains("12k"),
+            "no cap is stated: none applies by default"
+        );
+        // minimal has run, snapshot and open but no batch
+        let minimal = text(vec![ToolProfile::Minimal]);
+        assert!(!minimal.contains("agent_browser_batch"));
+        assert!(
+            !minimal.contains("agent_browser_tools_profiles"),
+            "that tool is not in the minimal profile"
+        );
+        // without run the instructions do not mention it, and only enabled tools are named
+        let actions = text(vec![ToolProfile::Actions]);
+        assert!(
+            !actions.contains("agent_browser_run") && !actions.contains("agent_browser_snapshot")
+        );
+        assert!(!actions.contains("agent_browser_flow_run"));
+        // a profile with the snapshot tool but no run keeps the upstream wording
+        let state_core = text(vec![ToolProfile::Actions, ToolProfile::Core]);
+        assert!(state_core.contains("agent_browser_run"));
+        // every tool the text names exists in the profiles' catalogs
+        for profiles in [
+            vec![ToolProfile::Core],
+            vec![ToolProfile::Minimal],
+            vec![ToolProfile::Actions],
+            vec![ToolProfile::Network],
+        ] {
+            let cfg = McpConfig::from_profiles(profiles);
+            let names = names_of(&cfg);
+            let t = instructions_for(&cfg);
+            for word in t.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')) {
+                if word.starts_with("agent_browser_") && word != "agent_browser_" {
+                    assert!(
+                        names.iter().any(|n| n == word),
+                        "{word} is named but not enabled in {:?}",
+                        cfg.profile_names()
+                    );
+                }
+            }
+        }
+        assert!(core.len() <= 2000, "{} bytes", core.len());
+    }
+
+    #[test]
+    fn run_tool_sends_the_script_on_stdin_with_a_budget_under_timeout_ms() {
+        assert_eq!(script_budget(120_000), 115_000);
+        assert_eq!(script_budget(10_000), 5_000);
+        assert_eq!(script_budget(1_000), 500);
+        assert_eq!(script_budget(1), 1);
+        let run = tools().into_iter().find(|t| t["name"] == TOOL_RUN).unwrap();
+        assert_eq!(run["inputSchema"]["required"], json!(["code"]));
+    }
+
+    #[test]
+    fn json_caps_bound_the_total_and_keep_every_type() {
+        let big: String = "x".repeat(5000);
+        let value = json!({
+            "name": big,
+            "rows": (0..400).map(|i| json!({"id": i, "label": format!("row {i} {}", "y".repeat(50))})).collect::<Vec<_>>(),
+            "numbers": (0..3000).collect::<Vec<_>>(),
+            "flag": true,
+            "none": null,
+            "count": 7,
+            "nested": {"a": "z".repeat(4000), "b": [1, 2, 3]},
+        });
+        let (capped, notes) = cap_json(&value, 2000);
+        let total = capped.to_string().chars().count();
+        assert!(
+            total <= 2000 + 600,
+            "the whole result stays bounded: {total}"
+        );
+        assert!(!notes.is_empty());
+        // types survive: strings stay strings, arrays arrays, numbers numbers
+        assert!(
+            capped["name"].is_string() && capped["rows"].is_array() && capped["numbers"].is_array()
+        );
+        assert_eq!(capped["flag"], true);
+        assert!(capped["none"].is_null());
+        assert_eq!(capped["count"], 7);
+        assert!(
+            capped["numbers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(Value::is_number),
+            "no marker item inside a numeric array"
+        );
+        assert!(capped["nested"]["a"].is_string() && capped["nested"]["b"] == json!([1, 2, 3]));
+        // a result already within the limit is returned untouched
+        let small = json!({"a": [1, 2, 3], "b": "ok"});
+        assert_eq!(cap_json(&small, 2000), (small.clone(), vec![]));
+        // many small fields: the object is cut to a prefix of its fields, still an object
+        let wide: serde_json::Map<String, Value> = (0..500)
+            .map(|i| (format!("k{i}"), json!("v".repeat(30))))
+            .collect();
+        let (capped, notes) = cap_json(&Value::Object(wide), 1000);
+        assert!(
+            capped.is_object() && capped.to_string().len() <= 1600,
+            "{}",
+            capped.to_string().len()
+        );
+        assert!(notes.iter().any(|n| n.contains("fields")));
+    }
+
+    #[test]
+    fn mcp_results_are_whole_unless_the_caller_asks_for_a_cap() {
+        let long = "w".repeat(30_000);
+        let make = || CliRun {
+            exit_code: Some(0),
+            stdout: json!({"success": true, "data": {"text": long, "origin": "https://a.test/"}})
+                .to_string(),
+            stderr: String::new(),
+        };
+        let whole = tool_result_from_run_capped(make(), None);
+        assert!(whole["content"][0]["text"].as_str().unwrap().len() >= 30_000);
+        assert!(
+            whole.get("structuredContent").is_some(),
+            "structuredContent stays where upstream had it"
+        );
+        let capped = tool_result_from_run_capped(make(), Some((Some(1000), 0)));
+        let text = capped["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.len() < 1500 && text.contains("omitted"),
+            "{}",
+            text.len()
+        );
+        assert!(
+            capped["structuredContent"]["response"]["data"]["text"]
+                .as_str()
+                .unwrap()
+                .len()
+                < 1500
+        );
+        let paged = tool_result_from_run_capped(make(), Some((Some(100), 200)));
+        assert!(paged["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("[showing chars 200-300 of 30000"));
+    }
+
+    #[test]
+    fn extra_args_may_carry_the_output_flags() {
+        for flag in ["--max-output", "--offset", "--snapshot"] {
+            assert!(MCP_EXTRA_ARGS_GLOBALS.contains(&flag), "{flag}");
+        }
+    }
+
+    #[test]
+    fn snapshot_find_hidden_text_and_all_map_to_cli_flags() {
+        let args = snapshot_command_args(&json!({"find": "ship", "hiddenText": true, "all": true}))
+            .unwrap();
+        assert_eq!(
+            args,
+            vec!["snapshot", "--all", "--find", "ship", "--hidden-text"]
+        );
+        let args = snapshot_command_args(&json!({})).unwrap();
+        assert_eq!(args, vec!["snapshot", "-i"]);
+    }
+
     #[test]
     fn tool_text_keeps_response_warnings() {
         let value = json!({ "success": true, "data": { "url": "about:blank" },
@@ -5278,8 +5783,11 @@ mod tests {
         assert!(names.contains(&TOOL_OPEN));
         assert!(names.contains(&TOOL_READ));
         assert!(names.contains(&TOOL_SNAPSHOT));
-        assert!(names.contains(&TOOL_CLICK));
+        assert!(names.contains(&TOOL_RUN));
+        assert!(names.contains(&TOOL_BATCH));
         assert!(names.contains(&TOOL_SCREENSHOT));
+        // single-step tools moved to the `actions` profile in this fork's default
+        assert!(!names.contains(&TOOL_CLICK));
         assert!(!names.contains(&TOOL_NETWORK_HAR_START));
         assert!(!names.contains(&TOOL_PLUGIN_LIST));
         assert!(!names.contains(&TOOL_REACT_TREE));
@@ -6607,7 +7115,7 @@ mod tests {
     fn call_tool_rejects_invalid_session_name() {
         let err = call_tool(
             Some(&json!({
-                "name": TOOL_GET_URL,
+                "name": TOOL_SNAPSHOT,
                 "arguments": { "session": "has space" }
             })),
             &McpConfig::default(),
