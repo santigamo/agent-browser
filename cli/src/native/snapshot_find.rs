@@ -203,7 +203,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    const TREE: &str = "- heading \"Report\" [level=1, ref=e1]\n- generic\n  - heading \"Team\" [level=2, ref=e2]\n  - list\n    - listitem [level=1]\n      - StaticText \"Ana\"\n    - listitem [level=1]\n      - StaticText \"Luis \"\n      - link \"profile\" [ref=e3]\n";
+    const TREE: &str = "- heading \"Report\" [level=1, ref=e1]\n- generic\n  - heading \"Team\" [level=2, ref=e2]\n  - list\n    - listitem [level=1]\n      - StaticText \"Pat\"\n    - listitem [level=1]\n      - StaticText \"Luis \"\n      - link \"profile\" [ref=e3]\n";
 
     #[test]
     fn find_returns_the_match_with_its_ancestors_only() {
@@ -239,7 +239,7 @@ mod tests {
     #[test]
     fn hidden_text_is_labelled_by_container_and_filtered_by_find() {
         let r = json!({"pieces": [
-            {"c": "main > <details \"Shipping rules\"> (closed)", "t": "Orders above the threshold ship free in March."},
+            {"c": "main > <details \"Shipping rules\"> (closed)", "t": "Orders above the threshold ship free in spring."},
             {"c": "<div#tpl> (hidden attribute)", "t": "Promo text"}], "more": 0});
         let all = render_hidden_text(&r, None);
         assert!(all.starts_with("hidden text (not visible on the page; each piece is labelled with its container): 2 pieces"), "{all}");

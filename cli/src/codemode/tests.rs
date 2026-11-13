@@ -231,7 +231,7 @@ fn failed_input_target_lists_the_controls_that_may_create_it() {
             }
             "get" => json!({"success": true, "data": {"title": "Docs"}}),
             "snapshot" => json!({"success": true, "data": {"snapshot":
-            "- link \"Home\" [ref=e1]\n- button \"Search\" [ref=e2]\n- link \"Pricing\" [ref=e3]\n"}}),
+            "- link \"Home\" [ref=e1]\n- button \"Search\" [ref=e2]\n- link \"Plans\" [ref=e3]\n"}}),
             _ => ok(),
         }
     });

@@ -141,7 +141,7 @@ fn e2e_a_script_drives_a_real_page_and_stops_at_the_failing_step() {
     let f = Fixture::new();
     let page = "data:text/html,<input id=q><button id=go onclick=\"document.getElementById('out').textContent='hi '+document.getElementById('q').value\">Go</button><p id=out></p>";
     let script = format!(
-        "page.goto({page:?}); page.fill('#q', 'Ana'); page.click('#go'); \
+        "page.goto({page:?}); page.fill('#q', 'Pat'); page.click('#go'); \
          const out = page.text('#out'); page.click('#missing-button'); return out;"
     );
     let out = f.run(&[], &script);
@@ -151,9 +151,9 @@ fn e2e_a_script_drives_a_real_page_and_stops_at_the_failing_step() {
         err.contains("step 5: page.click(\"#missing-button\") failed"),
         "{err}"
     );
-    let ok = f.run(&[], &format!("page.goto({page:?}); page.fill('#q', 'Ana'); page.click('#go'); return page.text('#out');"));
+    let ok = f.run(&[], &format!("page.goto({page:?}); page.fill('#q', 'Pat'); page.click('#go'); return page.text('#out');"));
     assert!(ok.status.success(), "{ok:?}");
-    assert_eq!(stdout(&ok).trim(), "hi Ana");
+    assert_eq!(stdout(&ok).trim(), "hi Pat");
     let _ = f.run_close();
 }
 
@@ -185,7 +185,7 @@ const DOM: &str = r##"<!doctype html><html><head><meta charset="utf-8"><title>Lo
 </ul>
 <form>
   <label for="name">Full name</label><input id="name" placeholder="Your name">
-  <label for="mail">Email address</label><input id="mail" type="email" placeholder="you@example.test">
+  <label for="mail">Contact email</label><input id="mail" type="email" placeholder="you@example.test">
   <button type="button" id="save" onclick="window.saved = (window.saved || 0) + 1">Save changes</button>
   <button type="button" id="gone" style="display:none">Secret action</button>
   <input type="checkbox" id="tos" style="position:absolute;opacity:0;width:0;height:0">
@@ -244,7 +244,7 @@ fn e2e_locators_find_elements_by_role_text_label_placeholder_and_chains() {
           roleRe: page.getByRole('button', {name: /save/i}).count(),
           heading: page.getByRole('heading', {name: 'Catalog'}).text(),
           text: page.getByText('Visible alpha').text(),
-          label: page.getByLabel('Email address').getAttribute('type'),
+          label: page.getByLabel('Contact email').getAttribute('type'),
           placeholder: page.getByPlaceholder('Your name').getAttribute('id'),
           css: page.locator('#items li.x').count(),
           engine: page.locator('text=Visible gamma').count(),
@@ -283,7 +283,7 @@ fn e2e_locator_actions_act_on_the_visible_match_and_leave_no_marker_behind() {
     let f = Fixture::new();
     let v = f.value(
         DOM,
-        r#"page.getByLabel('Full name').fill('Ana');
+        r#"page.getByLabel('Full name').fill('Pat');
            page.getByRole('button', {name: 'Save changes'}).click();
            page.getByRole('button', {name: 'Card action'}).click();
            page.getByLabel('Accept the terms').check();
@@ -294,7 +294,7 @@ fn e2e_locator_actions_act_on_the_visible_match_and_leave_no_marker_behind() {
              tos: page.evaluate(() => document.getElementById('tos').checked),
            };"#,
     );
-    assert_eq!(v["name"], "Ana");
+    assert_eq!(v["name"], "Pat");
     assert_eq!(v["saved"], 1);
     assert_eq!(v["inner"], "1");
     assert_eq!(v["tos"], true);

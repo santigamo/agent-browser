@@ -156,12 +156,12 @@ pub async fn hover(
 /// One table serves the fill error messages, the snapshot's collapsed date/time controls and the
 /// script injected into the page, so they cannot drift apart.
 pub(super) const STRUCTURED_INPUTS: &[(&str, &str, &str, bool)] = &[
-    ("time", "HH:MM", "19:30", true),
+    ("time", "HH:MM", "09:15", true),
     ("date", "YYYY-MM-DD", "2026-03-14", true),
     (
         "datetime-local",
         "YYYY-MM-DDTHH:MM",
-        "2026-03-14T19:30",
+        "2026-03-14T09:15",
         true,
     ),
     ("month", "YYYY-MM", "2026-03", true),

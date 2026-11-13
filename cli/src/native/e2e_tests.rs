@@ -17127,12 +17127,12 @@ async fn e2e_fill_sets_structured_inputs_and_rejects_values_the_browser_would_dr
         json!("2026-03-14"),
     )
     .await;
-    assert_success(&fill_selector(&mut state, "#t", "19:30").await);
+    assert_success(&fill_selector(&mut state, "#t", "08:45").await);
     assert_evaluate(
         &mut state,
         "v2",
         "document.getElementById('t').value",
-        json!("19:30"),
+        json!("08:45"),
     )
     .await;
     assert_success(&fill_selector(&mut state, "#c", "#FF8800").await);
@@ -17345,7 +17345,7 @@ customElements.define('inner-box', class extends HTMLElement { constructor() { s
     let r = execute_command(&get("a", "#n"), &mut state).await;
     assert_eq!(get_data(&r)["text"], "light");
     // a descendant selector crosses the shadow boundary
-    assert_success(&fill_selector(&mut state, "my-box input", "Ana").await);
+    assert_success(&fill_selector(&mut state, "my-box input", "Pat").await);
     assert_success(
         &execute_command(
             &json!({ "id": "c", "action": "click", "selector": "#go" }),
@@ -17354,7 +17354,7 @@ customElements.define('inner-box', class extends HTMLElement { constructor() { s
         .await,
     );
     let r = execute_command(&get("d", "#out"), &mut state).await;
-    assert_eq!(get_data(&r)["text"], "hi Ana");
+    assert_eq!(get_data(&r)["text"], "hi Pat");
     // nested shadow roots
     let r = execute_command(&get("e", "#deep"), &mut state).await;
     assert_eq!(get_data(&r)["text"], "deep text");

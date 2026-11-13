@@ -7,7 +7,7 @@ hidden: true
 
 # agent-browser
 
-Fast browser automation CLI for AI agents. Chrome/Chromium via CDP with accessibility-tree snapshots and compact `@eN` element refs.
+Browser automation CLI for AI agents: Chrome over CDP, accessibility-tree snapshots with `@eN` refs.
 
 Install: `npm i -g agent-browser && agent-browser install`
 
@@ -21,7 +21,7 @@ agent-browser skills get core             # start here: the loop, waits, common 
 
 The core guide ends with a table of references to load for detailed commands and flags. Use `agent-browser skills get core --full` only when you need every reference at once; it is several times larger.
 
-The CLI serves skill content that matches the installed version. This stub cannot change between releases, which is why it only points at `skills get core`.
+The CLI serves skill content that matches the installed version; this stub only points at `skills get core`.
 
 ## Specialized skills
 
@@ -40,12 +40,3 @@ agent-browser skills get agentcore         # AWS Bedrock AgentCore cloud browser
 ```
 
 Run `agent-browser skills list` to see everything available on the installed version.
-
-## Why agent-browser
-
-- Fast native Rust CLI, not a Node.js wrapper
-- Works with any AI agent (Cursor, Claude Code, Codex, Continue, Windsurf, etc.)
-- Chrome/Chromium via CDP with no Playwright or Puppeteer dependency
-- Accessibility-tree snapshots with element refs for reliable interaction
-- Sessions, authentication vault, state persistence, video recording
-- Specialized skills for Electron apps, Slack, exploratory testing, cloud providers
