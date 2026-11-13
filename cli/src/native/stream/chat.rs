@@ -1,3 +1,4 @@
+// Modified for the browser-duel fork of vercel-labs/agent-browser v0.43.0 (Apache-2.0, section 4(b)); see CHANGES-FORK.md.
 use std::sync::OnceLock;
 
 use serde_json::{json, Value};
@@ -1032,6 +1033,11 @@ mod tests {
     }
 
     #[test]
+    fn chat_does_not_allow_run() {
+        assert!(!is_allowed_chat_command("run"));
+    }
+
+    #[test]
     fn chat_allows_every_browser_command() {
         const MANAGEMENT: &[&str] = &[
             "chat",
@@ -1042,6 +1048,8 @@ mod tests {
             "plugin",
             "plugins",
             "profiles",
+            // Runs a whole script of steps from one chat message; chat sends single commands.
+            "run",
             "upgrade",
         ];
         let src = include_str!("../../commands.rs");

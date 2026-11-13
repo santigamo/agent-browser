@@ -54,6 +54,7 @@ Source files modified from upstream (each starts with the Apache-2.0 section 4(b
 - `cli/src/native/element.rs`: selector expressions delegate to `dom_js`.
 - `cli/src/native/interaction.rs`: `fill` for structured inputs, hidden checkbox click.
 - `cli/src/native/mod.rs`: new modules.
+- `cli/src/native/stream/chat.rs`: a test that keeps `run` out of the chat allowlist.
 - `cli/src/native/snapshot.rs`: date and time collapse, item cap, row and cell squashing.
 - `cli/src/native/e2e_tests.rs`: Chrome-gated tests for the above.
 - `cli/tests/batch_cli.rs`: tests for the new batch default.
