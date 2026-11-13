@@ -2314,11 +2314,17 @@ pub(crate) fn build_batch_command(
     Ok((parsed, action))
 }
 
+/// True for commands whose last argument is text a person typed (a password, a token): it is not
+/// echoed back into labels or error messages. The one place that decides this, for batch headers
+/// and for `run` step messages alike.
+pub(crate) fn redacts_typed_value(command: &str) -> bool {
+    matches!(command, "fill" | "type" | "keyboard")
+}
+
 /// A short one-line label for a batch item, for the `[n/total]` header.
 fn batch_item_label(args: &[String]) -> String {
-    // Typed values (passwords, tokens) are not echoed back into the output.
     let joined = match args.first().map(String::as_str) {
-        Some("fill") | Some("type") | Some("keyboard") if args.len() > 2 => {
+        Some(command) if redacts_typed_value(command) && args.len() > 2 => {
             format!("{} {} <text>", args[0], args[1])
         }
         _ => args.join(" "),

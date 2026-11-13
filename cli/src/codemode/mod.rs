@@ -258,6 +258,10 @@ pub fn run_script_within(
             ));
         })
         .map_err(|e| e.to_string())?;
+        let redacts_fn = Function::new(ctx.clone(), |command: String| -> bool {
+            crate::redacts_typed_value(&command)
+        })
+        .map_err(|e| e.to_string())?;
         let remaining_fn = Function::new(ctx.clone(), move || -> f64 {
             deadline
                 .saturating_duration_since(Instant::now())
@@ -268,6 +272,7 @@ pub fn run_script_within(
         g.set("__cmd", cmd_fn).map_err(|e| e.to_string())?;
         g.set("__split", split_fn).map_err(|e| e.to_string())?;
         g.set("__sleep", sleep_fn).map_err(|e| e.to_string())?;
+        g.set("__redacts", redacts_fn).map_err(|e| e.to_string())?;
         g.set("__remaining", remaining_fn)
             .map_err(|e| e.to_string())?;
         g.set("__logCap", LOG_CAP_CHARS as f64)

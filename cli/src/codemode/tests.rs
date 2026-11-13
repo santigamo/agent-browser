@@ -38,6 +38,11 @@ fn with_mock(script: &str, respond: fn(&[String], usize) -> Value) -> (Vec<Vec<S
         )
         .unwrap();
         g.set("__DOM_LIB", "(/* page library */ null)").unwrap();
+        g.set(
+            "__redacts",
+            Function::new(ctx.clone(), |c: String| crate::redacts_typed_value(&c)).unwrap(),
+        )
+        .unwrap();
         ctx.eval::<(), _>(PRELUDE).unwrap();
         let wrapped = format!(
             "(() => {{ try {{ return 'ok:' + JSON.stringify((() => {{ {script} }})()); }} \
@@ -168,7 +173,7 @@ fn css_target_that_never_appears_reports_the_wait() {
     });
     assert!(
         out.starts_with(
-            "err:step 1: page.fill(\"#q\", \"x\") failed: Element not found: #q (waited 5s for it)"
+            "err:step 1: page.fill(\"#q\", \"<text>\") failed: Element not found: #q (waited 5s for it)"
         ),
         "{out}"
     );
@@ -475,4 +480,26 @@ fn unsupported_keys_are_type_errors_that_name_them() {
         ok()
     });
     assert!(out.contains("unsupported state 'ready'"), "{out}");
+}
+
+#[test]
+fn a_typed_value_is_not_echoed_into_a_failed_step_message() {
+    let (_, out) = with_mock("page.fill('#pw', 'hunter2-secret');", |a, _| {
+        match a[0].as_str() {
+            "fill" => json!({"success": false, "error": "covered by <div#overlay>"}),
+            _ => ok(),
+        }
+    });
+    assert!(
+        out.contains("page.fill(\"#pw\", \"<text>\") failed"),
+        "{out}"
+    );
+    assert!(!out.contains("hunter2-secret"), "{out}");
+    let (_, out) = with_mock("page.keyboard.type('hunter2-secret');", |a, _| {
+        match a[0].as_str() {
+            "type" | "keyboard" => json!({"success": false, "error": "no focus"}),
+            _ => ok(),
+        }
+    });
+    assert!(!out.contains("hunter2-secret"), "{out}");
 }

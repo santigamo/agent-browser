@@ -144,8 +144,11 @@ const page = (() => {
     const call = act(name, (s) => [...cmd, s]);
     return (t, o) => pick(call(t, [], o), ...keys);
   };
+  // A typed value (a password, a token) is not echoed into messages: the Rust side decides which
+  // commands, the same rule as the batch headers.
+  const typed = (name, v) => (__redacts(name) ? '"<text>"' : q(v));
   const withValue = (name, cmd) => {
-    const call = act(name, (s, v) => [...cmd, s, v], (d, v) => `${q(d)}, ${q(v)}`);
+    const call = act(name, (s, v) => [...cmd, s, v], (d, v) => `${q(d)}, ${typed(name, v)}`);
     return (t, v, o) => (call(t, [v], o), undefined);
   };
 
@@ -208,7 +211,7 @@ const page = (() => {
     },
     keyboard: {
       press: (k) => (run("press", ["press", k], q(k)), undefined),
-      type: (txt) => (run("type", ["keyboard", "type", txt], q(txt)), undefined),
+      type: (txt) => (run("type", ["keyboard", "type", txt], typed("keyboard", txt)), undefined),
     },
     select: (t, ...rest) => {
       const opts = rest.length && isOpts(rest[rest.length - 1]) ? rest.pop() : undefined;
