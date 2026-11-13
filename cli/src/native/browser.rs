@@ -447,6 +447,81 @@ fn lifecycle_wait_error(
     }
 }
 
+/// How long a default navigation keeps waiting for the `load` event once `DOMContentLoaded` has fired.
+const LOAD_SETTLE: Duration = Duration::from_secs(3);
+
+/// How a bounded `load` wait ended.
+#[derive(Debug, PartialEq, Eq)]
+enum LoadWait {
+    /// The `load` event fired.
+    Loaded,
+    /// `DOMContentLoaded` fired but `load` did not within the settle window (or the overall timeout).
+    SettledAfterDomContent,
+}
+
+/// Waits for `Page.loadEventFired`, but stops `settle` after `Page.domContentEventFired` instead of waiting out
+/// the whole `timeout`: a document that is parsed and whose scripts ran is usable even when some subresource
+/// (an endless poll, a hanging tracker) keeps `load` from ever firing. Without a DOMContentLoaded the wait runs
+/// the full `timeout` and then fails with `TimedOut`, as the strict wait does.
+async fn wait_load_bounded(
+    session_id: &str,
+    rx: &mut broadcast::Receiver<CdpEvent>,
+    timeout: Duration,
+    settle: Duration,
+) -> Result<LoadWait, LifecycleWaitError> {
+    let deadline = Instant::now() + timeout;
+    let mut dom_content_at: Option<Instant> = None;
+    loop {
+        let limit = match dom_content_at {
+            Some(at) => (at + settle).min(deadline),
+            None => deadline,
+        };
+        let budget = limit.saturating_duration_since(Instant::now());
+        match tokio::time::timeout(budget, rx.recv()).await {
+            Err(_) => {
+                return if dom_content_at.is_some() {
+                    Ok(LoadWait::SettledAfterDomContent)
+                } else {
+                    Err(LifecycleWaitError::TimedOut)
+                }
+            }
+            Ok(Ok(event)) if event.session_id.as_deref() == Some(session_id) => {
+                match event.method.as_str() {
+                    "Page.loadEventFired" => return Ok(LoadWait::Loaded),
+                    "Page.domContentEventFired" if dom_content_at.is_none() => {
+                        dom_content_at = Some(Instant::now())
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(broadcast::error::RecvError::Lagged(_))) => {}
+            Ok(Err(broadcast::error::RecvError::Closed)) => {
+                return Err(LifecycleWaitError::StreamClosed)
+            }
+        }
+    }
+}
+
+/// A `load` that did not fire is not a failed navigation when the document is parsed (`readyState` interactive or
+/// complete, and the main resource committed): the step succeeds with a note that names the state, so the caller
+/// does not retry a navigation that cannot get faster. A document still `loading` keeps failing as before.
+fn load_is_usable(ready_state: &str) -> bool {
+    matches!(ready_state, "interactive" | "complete")
+}
+
+fn load_settled_warning(waited: Duration, ready_state: &str, after_dom_content: bool) -> String {
+    let since = if after_dom_content {
+        " of DOMContentLoaded"
+    } else {
+        ""
+    };
+    format!(
+        "the load event did not fire within {}ms{since} (document is {ready_state}; slow or endless subresources, so images or late scripts may be missing); read what is there, a reload will not be faster",
+        waited.as_millis()
+    )
+}
+
 /// Time left before `deadline`, never zero so a helper timeout still expires.
 fn remaining_budget(deadline: Instant) -> Duration {
     deadline
@@ -1431,7 +1506,20 @@ impl BrowserManager {
         }
     }
 
+    /// Navigates and waits for `wait_until`; a wait that does not complete fails the navigation.
     pub async fn navigate(&mut self, url: &str, wait_until: WaitUntil) -> Result<Value, String> {
+        self.navigate_with(url, wait_until, false).await
+    }
+
+    /// `navigate`, where `bounded` lets a `load` wait that cannot finish end with a note instead of
+    /// an error once the document is parsed (see `wait_load_bounded`). The caller passes `bounded`
+    /// only when nobody asked for a specific wait state: an explicit `--wait-until load` stays strict.
+    pub async fn navigate_with(
+        &mut self,
+        url: &str,
+        wait_until: WaitUntil,
+        bounded: bool,
+    ) -> Result<Value, String> {
         let session_id = self.active_session_id()?.to_string();
         let mut lifecycle_rx = self.client.subscribe();
 
@@ -1454,11 +1542,37 @@ impl BrowserManager {
         // Only wait for lifecycle events if Chrome created a new loader (full navigation).
         // If loader_id is None, it was a same-document navigation (e.g., hash routing)
         // which does not fire Page.loadEventFired or Page.domContentEventFired.
+        let mut load_warning: Option<String> = None;
         if nav_result.loader_id.is_some() && wait_until != WaitUntil::None {
             let timeout = Duration::from_millis(self.default_timeout_ms);
-            self.wait_for_lifecycle(wait_until, &session_id, &mut lifecycle_rx, timeout)
-                .await
-                .map_err(|error| lifecycle_wait_error(wait_until, timeout, error))?;
+            if bounded && wait_until == WaitUntil::Load {
+                let (outcome, after_dom_content) =
+                    match wait_load_bounded(&session_id, &mut lifecycle_rx, timeout, LOAD_SETTLE)
+                        .await
+                    {
+                        Ok(LoadWait::Loaded) => (None, false),
+                        Ok(LoadWait::SettledAfterDomContent) => (Some(LOAD_SETTLE), true),
+                        Err(LifecycleWaitError::TimedOut) => (Some(timeout), false),
+                        Err(error) => return Err(lifecycle_wait_error(wait_until, timeout, error)),
+                    };
+                if let Some(waited) = outcome {
+                    let state = self.get_ready_state().await;
+                    if load_is_usable(&state) {
+                        load_warning =
+                            Some(load_settled_warning(waited, &state, after_dom_content));
+                    } else {
+                        return Err(lifecycle_wait_error(
+                            wait_until,
+                            timeout,
+                            LifecycleWaitError::TimedOut,
+                        ));
+                    }
+                }
+            } else {
+                self.wait_for_lifecycle(wait_until, &session_id, &mut lifecycle_rx, timeout)
+                    .await
+                    .map_err(|error| lifecycle_wait_error(wait_until, timeout, error))?;
+            }
         }
 
         let page_url = self.get_url().await.unwrap_or_else(|_| url.to_string());
@@ -1481,7 +1595,11 @@ impl BrowserManager {
             .pages
             .get(self.active_page_index)
             .map(|p| p.target_id.clone());
-        Ok(json!({ "url": page_url, "title": title, "targetId": target_id }))
+        let mut result = json!({ "url": page_url, "title": title, "targetId": target_id });
+        if let Some(warning) = load_warning {
+            result["loadWarning"] = json!(warning);
+        }
+        Ok(result)
     }
 
     async fn wait_for_lifecycle(
@@ -1526,6 +1644,14 @@ impl BrowserManager {
     pub async fn get_url(&self) -> Result<String, String> {
         let result = self.evaluate_simple("location.href").await?;
         Ok(result.as_str().unwrap_or("").to_string())
+    }
+
+    /// `document.readyState`, or an empty string when the page cannot answer.
+    async fn get_ready_state(&self) -> String {
+        match self.evaluate_simple("document.readyState").await {
+            Ok(v) => v.as_str().unwrap_or("").to_string(),
+            Err(_) => String::new(),
+        }
     }
 
     pub async fn get_title(&self) -> Result<String, String> {
@@ -4831,6 +4957,104 @@ mod tests {
             start.elapsed()
         );
         assert_eq!(error, LifecycleWaitError::TimedOut);
+    }
+
+    #[test]
+    fn test_load_is_usable_only_for_a_parsed_document() {
+        assert!(load_is_usable("interactive") && load_is_usable("complete"));
+        assert!(!load_is_usable("loading") && !load_is_usable(""));
+        let w = load_settled_warning(Duration::from_millis(3_000), "interactive", true);
+        assert!(
+            w.contains("3000ms of DOMContentLoaded")
+                && w.contains("interactive")
+                && w.contains("reload will not be faster"),
+            "{w}"
+        );
+        assert!(
+            !load_settled_warning(Duration::from_millis(25_000), "complete", false)
+                .contains("DOMContentLoaded")
+        );
+    }
+
+    fn lifecycle_event(method: &str, session: &str) -> CdpEvent {
+        CdpEvent {
+            method: method.to_string(),
+            params: json!({}),
+            session_id: Some(session.to_string()),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bounded_load_wait_returns_at_load() {
+        let (tx, mut rx) = broadcast::channel(16);
+        tx.send(lifecycle_event("Page.domContentEventFired", "s"))
+            .unwrap();
+        tx.send(lifecycle_event("Page.loadEventFired", "s"))
+            .unwrap();
+        let r =
+            wait_load_bounded("s", &mut rx, Duration::from_secs(5), Duration::from_secs(3)).await;
+        assert_eq!(r, Ok(LoadWait::Loaded));
+    }
+
+    #[tokio::test]
+    async fn test_bounded_load_wait_settles_after_dom_content_when_load_never_comes() {
+        let (tx, mut rx) = broadcast::channel(16);
+        // another session's events never count
+        tx.send(lifecycle_event("Page.loadEventFired", "other"))
+            .unwrap();
+        tx.send(lifecycle_event("Page.domContentEventFired", "s"))
+            .unwrap();
+        let start = Instant::now();
+        let r = wait_load_bounded(
+            "s",
+            &mut rx,
+            Duration::from_secs(30),
+            Duration::from_millis(200),
+        )
+        .await;
+        assert_eq!(r, Ok(LoadWait::SettledAfterDomContent));
+        assert!(
+            start.elapsed() < Duration::from_secs(2),
+            "{:?}",
+            start.elapsed()
+        );
+        drop(tx);
+    }
+
+    #[tokio::test]
+    async fn test_bounded_load_wait_without_dom_content_runs_the_full_timeout_then_fails() {
+        let (_tx, mut rx) = broadcast::channel::<CdpEvent>(16);
+        let r = wait_load_bounded(
+            "s",
+            &mut rx,
+            Duration::from_millis(300),
+            Duration::from_millis(100),
+        )
+        .await;
+        assert_eq!(r, Err(LifecycleWaitError::TimedOut));
+        let (tx, mut rx) = broadcast::channel::<CdpEvent>(16);
+        drop(tx);
+        let r =
+            wait_load_bounded("s", &mut rx, Duration::from_secs(5), Duration::from_secs(1)).await;
+        assert_eq!(r, Err(LifecycleWaitError::StreamClosed));
+    }
+
+    #[tokio::test]
+    async fn test_bounded_load_wait_caps_the_settle_at_the_overall_timeout() {
+        let (tx, mut rx) = broadcast::channel(16);
+        tx.send(lifecycle_event("Page.domContentEventFired", "s"))
+            .unwrap();
+        let start = Instant::now();
+        let r = wait_load_bounded(
+            "s",
+            &mut rx,
+            Duration::from_millis(150),
+            Duration::from_secs(30),
+        )
+        .await;
+        assert_eq!(r, Ok(LoadWait::SettledAfterDomContent));
+        assert!(start.elapsed() < Duration::from_secs(2));
+        drop(tx);
     }
 
     /// The reported message keeps the configured budget and the state name.

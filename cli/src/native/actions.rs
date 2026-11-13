@@ -6304,11 +6304,13 @@ async fn handle_navigate(cmd: &Value, state: &mut DaemonState) -> Result<Value, 
 
     let mgr = state.browser.as_mut().ok_or("Browser not launched")?;
 
-    let wait_until = cmd
-        .get("waitUntil")
-        .and_then(|v| v.as_str())
+    let explicit_wait = cmd.get("waitUntil").and_then(|v| v.as_str());
+    let wait_until = explicit_wait
         .map(WaitUntil::from_str)
         .unwrap_or(WaitUntil::Load);
+    // Only a navigation nobody gave a wait state to may end without `load` once the document is
+    // parsed; an explicit `--wait-until load` keeps its strict meaning.
+    let bounded = explicit_wait.is_none() && !crate::fork::restores("open");
 
     // If --headers was passed, store them keyed by origin and enable Fetch
     // interception. The background fetch_handler_task (started on launch)
@@ -6352,7 +6354,7 @@ async fn handle_navigate(cmd: &Value, state: &mut DaemonState) -> Result<Value, 
         }
     }
 
-    navigate_active_page(state, url, wait_until).await
+    navigate_active_page(state, url, wait_until, bounded).await
 }
 
 /// Navigate the active page and drop element refs and frame scope. Every
@@ -6363,6 +6365,7 @@ async fn navigate_active_page(
     state: &mut DaemonState,
     url: &str,
     wait_until: WaitUntil,
+    bounded: bool,
 ) -> Result<Value, String> {
     // Same-document navigation retains registered tools and pending calls.
     // Subscribe before navigating, then let the ordered frameNavigated and
@@ -6398,7 +6401,7 @@ async fn navigate_active_page(
         .unwrap_or_else(|e| e.into_inner())
         .clear();
     let mgr = state.browser.as_mut().ok_or("Browser not launched")?;
-    let result = mgr.navigate(url, wait_until).await?;
+    let result = mgr.navigate_with(url, wait_until, bounded).await?;
     state.refresh_active_iframe_sessions().await;
 
     // The domain filter answers a blocked document with a 403 page, so a
@@ -9004,7 +9007,7 @@ async fn handle_recording_start(cmd: &Value, state: &mut DaemonState) -> Result<
     recording::check_ffmpeg_available().await?;
 
     if let Some(url) = recording_url {
-        navigate_active_page(state, url, WaitUntil::Load).await?;
+        navigate_active_page(state, url, WaitUntil::Load, false).await?;
     }
     let (client, session_id) = {
         let mgr = state.browser.as_ref().ok_or("Browser not launched")?;
@@ -9074,7 +9077,7 @@ async fn handle_recording_restart(cmd: &Value, state: &mut DaemonState) -> Resul
 
     let recording_target = if state.browser.is_some() {
         if let Some(ref url) = recording_url {
-            navigate_active_page(state, url, WaitUntil::Load).await?;
+            navigate_active_page(state, url, WaitUntil::Load, false).await?;
         }
         let browser = state.browser.as_ref().ok_or("Browser not launched")?;
         Some((

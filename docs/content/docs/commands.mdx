@@ -11,7 +11,7 @@ When the top-level Chrome/CDP `eval` result is a value JSON cannot represent, pl
 
 ```bash
 agent-browser open                    # Launch browser (no nav); stays on about:blank
-agent-browser open <url>              # Launch + navigate (aliases: goto, navigate)
+agent-browser open <url>              # Launch + navigate (aliases: goto, navigate); if load never fires but the document is parsed, returns ~3 s after DOMContentLoaded with a note
 agent-browser read [url]              # Fetch agent-readable text, or read rendered active-tab DOM
 agent-browser click <sel>             # Click element (--new-tab to open in new tab)
 agent-browser dblclick <sel>          # Double-click

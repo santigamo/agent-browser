@@ -1088,6 +1088,9 @@ fn print_primary_response(resp: &Response, action: Option<&str>, opts: &OutputOp
             if let Some(title) = data.get("title").and_then(|v| v.as_str()) {
                 println!("{} {}", color::success_indicator(), color::bold(title));
                 println!("  {}", color::dim(url));
+                if let Some(warning) = data.get("loadWarning").and_then(|v| v.as_str()) {
+                    println!("  note: {warning}");
+                }
                 return;
             }
             println!("{}", url);
@@ -2085,6 +2088,10 @@ summaries only on discovery or change. Fetch a selected schema with
 tools and unchanged catalogs add no context or discovery polling.
 
 The `goto` and `navigate` aliases still require a URL.
+
+When the `load` event never fires (an endless poll, a hanging tracker) but the document
+is parsed, open returns about 3 s after DOMContentLoaded with a `note:` line (`loadWarning`
+in JSON) instead of failing. An explicit `--wait-until load` keeps waiting for the event.
 
 Global Options:
   --json               Output as JSON

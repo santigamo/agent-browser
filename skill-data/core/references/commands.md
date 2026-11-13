@@ -14,6 +14,9 @@ agent-browser open            # Launch browser (no navigation); stays on about:b
                               # stage state before the first navigation.
 agent-browser open <url>      # Launch + navigate (aliases: goto, navigate)
                               # Supports: https://, http://, file://, about:, data://
+                              # If `load` never fires but the document is parsed, returns ~3 s after
+                              # DOMContentLoaded with a note (`loadWarning` in JSON); an explicit
+                              # `--wait-until load` keeps waiting for the event
                               # Auto-prepends https:// if no protocol given
 agent-browser read [url]      # Fetch agent-readable text, or read rendered active-tab DOM
                               # Explicit URLs send Accept: text/markdown, then try .md if needed

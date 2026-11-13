@@ -17453,3 +17453,89 @@ async fn e2e_wait_url_returns_after_the_new_page_has_loaded() {
     let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
     server.abort();
 }
+
+// ---------------------------------------------------------------------------
+// Bounded open: a load event that never fires
+// ---------------------------------------------------------------------------
+
+fn hanging_subresource_routes() -> Vec<(&'static str, Route)> {
+    vec![
+        (
+            "/hanging",
+            page("<h1>Usable now</h1><p>content</p><img src=\"/hang.png\">"),
+        ),
+        ("/hang.png", Route::Hang),
+    ]
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_open_continues_with_a_note_when_load_never_fires() {
+    let (port, server) = fixture_server(hanging_subresource_routes()).await;
+    let mut state = DaemonState::new();
+    assert_success(
+        &execute_command(
+            &json!({ "id": "1", "action": "launch", "headless": true }),
+            &mut state,
+        )
+        .await,
+    );
+    let start = std::time::Instant::now();
+    let resp = execute_command(
+        &json!({ "id": "2", "action": "navigate", "url": format!("http://127.0.0.1:{port}/hanging") }),
+        &mut state,
+    )
+    .await;
+    let took = start.elapsed();
+    assert_success(&resp);
+    assert_eq!(get_data(&resp)["title"], "Fixture");
+    let warning = get_data(&resp)["loadWarning"]
+        .as_str()
+        .expect("a note about the missing load event");
+    assert!(
+        warning.contains("DOMContentLoaded") && warning.contains("reload will not be faster"),
+        "{warning}"
+    );
+    assert!(
+        took < std::time::Duration::from_secs(10),
+        "returned after {took:?}, not the 25 s load timeout"
+    );
+    assert_evaluate(
+        &mut state,
+        "3",
+        "document.querySelector('h1').textContent",
+        json!("Usable now"),
+    )
+    .await;
+    let _ = execute_command(&json!({ "id": "99", "action": "close" }), &mut state).await;
+    server.abort();
+}
+
+#[tokio::test]
+#[ignore]
+async fn e2e_open_with_an_explicit_load_wait_stays_strict() {
+    let (port, server) = fixture_server(hanging_subresource_routes()).await;
+    let mut state = DaemonState::new();
+    assert_success(
+        &execute_command(
+            &json!({ "id": "1", "action": "launch", "headless": true }),
+            &mut state,
+        )
+        .await,
+    );
+    // The bounded wait ends about 3 s after DOMContentLoaded. A strict wait is still waiting
+    // for the load event well past that, until its 25 s budget runs out.
+    let strict = tokio::time::timeout(
+        std::time::Duration::from_secs(8),
+        execute_command(
+            &json!({ "id": "2", "action": "navigate", "url": format!("http://127.0.0.1:{port}/hanging"), "waitUntil": "load" }),
+            &mut state,
+        ),
+    )
+    .await;
+    assert!(
+        strict.is_err(),
+        "an explicit load wait returned early: {strict:?}"
+    );
+    server.abort();
+}
