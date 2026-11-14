@@ -33,7 +33,7 @@ Changes with no switch, because they are additions or fixes rather than changed 
 - Click and press wait for a navigation they start when asked to settle (`--snapshot`, and every `run` step).
 - `agent-browser run <file|->` and the `agent_browser_run` MCP tool are new, behind the `codemode` cargo feature, which is on by default. Build with `--no-default-features` for a binary without them.
 - MCP: the `minimal` and `actions` profiles, instructions built from the enabled tools, shorter shared argument descriptions, `snapshot` arguments `find`, `hiddenText` and `all`, `batch` `bail` defaulting to true, and `--max-output`, `--offset` and `--snapshot` allowed in `extraArgs`. Results keep their upstream shape.
-- Agent-facing texts: `skill-data/core/SKILL.md` leads with the `run` workflow, and `skills/agent-browser/SKILL.md` is thinner (it only points at `agent-browser skills get core`, per `AGENTS.md`).
+- Agent-facing texts: `skill-data/core/SKILL.md` leads with the `run` workflow, and `skills/agent-browser/SKILL.md` is a short self-sufficient stub (see Agent-facing text changes).
 - Version `0.43.0-duel.1` in `package.json`, `cli/Cargo.toml`, `cli/Cargo.lock`, the dashboard and the platform packages (by `scripts/sync-version.js`).
 - The README opens with a banner that says this is a fork.
 
@@ -79,7 +79,7 @@ Other files modified:
 These are the texts an agent reads: the core guide (`agent-browser skills get core`), the stub, the MCP `initialize` instructions and tool descriptions, and `--help`.
 
 - `skill-data/core/SKILL.md`: leads with the `run` workflow (one script per page state, the page API, targets and locators, what to do after the first miss, when to snapshot, `batch` for a few ref actions). It states only what the code does: printed output is not capped by default, a selector or text wait without a timeout of its own gives up after about 3 s on a settled page, a chosen timeout is waited out, and unsupported options throw. It keeps upstream's routing table.
-- `skills/agent-browser/SKILL.md`: unchanged except that the "Why agent-browser" list and a few words are gone, to stay a thin stub.
+- `skills/agent-browser/SKILL.md`: deliberately a self-sufficient stub (the `run` workflow, targets and failure handling in under 2800 bytes), against upstream's `AGENTS.md`, which asks for a thin pointer to `agent-browser skills get core`. A pointer stub makes the agent spend its first step loading the guide before it works; a stub that already carries the workflow does not. Every claim in it is checked against this fork's code.
 - MCP instructions: built from the enabled tools. With `agent_browser_run` enabled they lead with the one-script workflow; without it they keep the upstream wording. A tool is named only when its profile enables it.
 - MCP descriptions: `open`, `snapshot`, `batch` and the shared arguments are shorter and point at `agent_browser_run`.
 - `--help`: new text for `run`, `--snapshot`, `--offset`, `--max-output`, `batch`, `fill`, `click`, `open`, `wait` and `snapshot`.
